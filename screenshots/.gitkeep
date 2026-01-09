@@ -1,0 +1,13 @@
+# Screenshots Directory
+
+Add your app screenshots here:
+
+- main_menu.png - Main menu screen
+- gameplay.png - Game in progress
+- how_to_play.png - How to play dialog
+
+To capture screenshots:
+1. Run the app on a simulator/emulator
+2. Navigate to the screen you want to capture
+3. Use the device's screenshot function
+4. Save the image to this folder with the appropriate name

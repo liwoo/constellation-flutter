@@ -34,6 +34,16 @@ class AppRouter {
           ),
         ),
 
+        // Alpha Quest route
+        GoRoute(
+          path: '/alpha-quest',
+          name: 'alpha-quest',
+          pageBuilder: (context, state) => MaterialPage(
+            key: state.pageKey,
+            child: const AlphaQuestPage(),
+          ),
+        ),
+
         // Settings route
         GoRoute(
           path: '/settings',

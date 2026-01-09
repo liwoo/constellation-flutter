@@ -22,25 +22,33 @@ class ActionBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color baseColor = isSubmit
+    // Use greyed out colors when inactive
+    final Color activeColor = isSubmit
         ? const Color(0xFF4CAF50) // Green for GO
         : const Color(0xFFE91E63); // Pink/Red for DEL
+
+    final Color baseColor = isActive
+        ? activeColor
+        : Colors.grey.shade600; // Grey when disabled
 
     final HSLColor hsl = HSLColor.fromColor(baseColor);
     final Color lighterColor = hsl.withLightness((hsl.lightness + 0.15).clamp(0.0, 1.0)).toColor();
     final Color darkerColor = hsl.withLightness((hsl.lightness - 0.15).clamp(0.0, 1.0)).toColor();
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          // Outer glow
-          _buildGlow(baseColor),
+    return Opacity(
+      opacity: isActive ? 1.0 : 0.5,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            // Outer glow (only when active)
+            if (isActive) _buildGlow(activeColor),
 
-          // Main bubble
-          _buildBubble(baseColor, lighterColor, darkerColor),
-        ],
+            // Main bubble
+            _buildBubble(baseColor, lighterColor, darkerColor),
+          ],
+        ),
       ),
     );
   }

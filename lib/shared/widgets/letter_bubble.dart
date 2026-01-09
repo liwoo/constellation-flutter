@@ -81,17 +81,17 @@ class LetterBubble extends StatelessWidget {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           boxShadow: [
-            // Soft white glow (star-like luminosity)
+            // Soft white glow (star-like luminosity) - more subtle
             BoxShadow(
-              color: Colors.white.withAlpha(isSelected ? 180 : 100),
-              blurRadius: isSelected ? 15 : 10,
-              spreadRadius: isSelected ? 2 : 1,
+              color: Colors.white.withAlpha(isSelected ? 120 : 60),
+              blurRadius: isSelected ? 12 : 8,
+              spreadRadius: isSelected ? 1 : 0,
             ),
-            // Secondary softer glow
+            // Secondary softer glow - more subtle
             BoxShadow(
-              color: Colors.white.withAlpha(isSelected ? 80 : 40),
-              blurRadius: isSelected ? 25 : 18,
-              spreadRadius: isSelected ? 4 : 2,
+              color: Colors.white.withAlpha(isSelected ? 50 : 25),
+              blurRadius: isSelected ? 20 : 14,
+              spreadRadius: isSelected ? 2 : 1,
             ),
           ],
         ),

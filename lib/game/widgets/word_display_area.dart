@@ -12,52 +12,77 @@ class WordDisplayArea extends StatelessWidget {
 
   final List<LetterNode> selectedLetters;
 
+  /// Calculate dynamic bubble size to fit all letters without overflow
+  double _calculateBubbleSize(double availableWidth, int letterCount) {
+    if (letterCount == 0) return 50.0;
+
+    // Account for padding and spacing between letters
+    const horizontalPadding = AppSpacing.lg * 2; // Container padding
+    const letterSpacing = AppSpacing.xs * 2; // Padding around each letter
+
+    final totalSpacing = horizontalPadding + (letterCount * letterSpacing);
+    final availableForBubbles = availableWidth - totalSpacing;
+    final maxBubbleSize = availableForBubbles / letterCount;
+
+    // Clamp between reasonable min/max sizes
+    return maxBubbleSize.clamp(24.0, 50.0);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         // Word container with golden border
-        Container(
-          margin: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.lg,
-            vertical: AppSpacing.md,
-          ),
-          constraints: const BoxConstraints(minHeight: 80),
-          decoration: BoxDecoration(
-            color: AppColors.primaryDarkPurple.withOpacity(0.6),
-            borderRadius: BorderRadius.circular(AppBorderRadius.lg),
-            border: Border.all(
-              color: AppColors.accentGold,
-              width: 2,
-            ),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: selectedLetters.isEmpty
-                ? [
-                    Text(
-                      'Connect letters...',
-                      style: TextStyle(
-                        color: AppColors.white.withOpacity(0.5),
-                        fontSize: 16,
-                      ),
-                    ),
-                  ]
-                : selectedLetters
-                    .map((letter) => Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: AppSpacing.xs,
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final bubbleSize = _calculateBubbleSize(
+              constraints.maxWidth - (AppSpacing.lg * 2), // Account for margin
+              selectedLetters.length,
+            );
+
+            return Container(
+              margin: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.lg,
+                vertical: AppSpacing.md,
+              ),
+              constraints: const BoxConstraints(minHeight: 80),
+              decoration: BoxDecoration(
+                color: AppColors.primaryDarkPurple.withAlpha(153),
+                borderRadius: BorderRadius.circular(AppBorderRadius.lg),
+                border: Border.all(
+                  color: AppColors.accentGold,
+                  width: 2,
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: selectedLetters.isEmpty
+                    ? [
+                        Text(
+                          'Connect letters...',
+                          style: TextStyle(
+                            color: AppColors.white.withAlpha(128),
+                            fontSize: 16,
                           ),
-                          child: LetterBubble(
-                            letter: letter.letter,
-                            points: letter.points,
-                            isSelected: true,
-                            size: 50,
-                          ),
-                        ))
-                    .toList(),
-          ),
+                        ),
+                      ]
+                    : selectedLetters
+                        .map((letter) => Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpacing.xs,
+                              ),
+                              child: LetterBubble(
+                                letter: letter.letter,
+                                points: letter.points,
+                                isSelected: true,
+                                size: bubbleSize,
+                              ),
+                            ))
+                        .toList(),
+              ),
+            );
+          },
         ),
 
         // Small triangle constellation decoration

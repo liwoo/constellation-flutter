@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:constellation_app/shared/widgets/widgets.dart';
-import 'package:constellation_app/shared/constants/constants.dart';
 import 'package:constellation_app/game/cubit/game_cubit.dart';
 import 'package:constellation_app/game/widgets/connection_painter.dart';
 
@@ -24,11 +23,31 @@ class LetterConstellation extends StatelessWidget {
   final Offset? currentDragPosition;
   final bool isDragging;
 
+  /// Calculate dynamic bubble size based on container dimensions
+  /// Fits 26 letters with proper spacing
+  double _calculateBubbleSize(Size containerSize) {
+    // For 26 letters, we need roughly 6 columns and 5 rows
+    // Use the smaller dimension to ensure bubbles fit
+    final minDimension = containerSize.width < containerSize.height
+        ? containerSize.width
+        : containerSize.height;
+
+    // Bubble size is approximately 1/7 of the smaller dimension
+    // This allows for 6 bubbles with spacing
+    final calculatedSize = minDimension / 7.5;
+
+    // Clamp to reasonable bounds
+    return calculatedSize.clamp(36.0, 70.0);
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final containerSize = Size(constraints.maxWidth, constraints.maxHeight);
+
+        // Calculate dynamic bubble size based on screen
+        final bubbleSize = _calculateBubbleSize(containerSize);
 
         // Get positions of selected letters for drawing connections
         final selectedPositions = selectedLetterIds
@@ -69,20 +88,21 @@ class LetterConstellation extends StatelessWidget {
                 ),
               ),
 
-              // Letter bubbles
+              // Letter bubbles with dynamic sizing
               ...letters.map((letter) {
                 final x = letter.position.dx * constraints.maxWidth;
                 final y = letter.position.dy * constraints.maxHeight;
                 final isSelected = selectedLetterIds.contains(letter.id);
 
                 return Positioned(
-                  left: x - (AppConstants.letterBubbleSize / 2),
-                  top: y - (AppConstants.letterBubbleSize / 2),
+                  left: x - (bubbleSize / 2),
+                  top: y - (bubbleSize / 2),
                   child: IgnorePointer(
                     child: LetterBubble(
                       letter: letter.letter,
                       points: letter.points,
                       isSelected: isSelected,
+                      size: bubbleSize,
                     ),
                   ),
                 );
