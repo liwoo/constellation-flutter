@@ -65,6 +65,9 @@ dev_dependencies:
   # Code Generation
   mason: ^0.1.0-dev.57
 
+  # Splash Screen
+  flutter_native_splash: ^2.4.1
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
@@ -80,6 +83,7 @@ flutter:
   assets:
     - assets/audio/
     - assets/data/categories/
+    - assets/logos/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
@@ -106,3 +110,11 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# Flutter Native Splash Configuration
+flutter_native_splash:
+  color: "#ffffff"
+  image: assets/logos/afri_games.png
+  android_12:
+    image: assets/logos/afri_games.png
+    color: "#ffffff"
