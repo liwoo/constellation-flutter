@@ -114,7 +114,12 @@ flutter:
 # Flutter Native Splash Configuration
 flutter_native_splash:
   color: "#ffffff"
-  image: assets/logos/afri_games.png
+  # Use app icon for native splash (system level)
+  android: true
+  ios: true
+  web: true
+  # Keep it minimal - just background color
   android_12:
-    image: assets/logos/afri_games.png
     color: "#ffffff"
+
+
