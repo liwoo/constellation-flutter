@@ -103,7 +103,6 @@ class GameCubit extends Cubit<GameState> {
     // Get 5 random categories that have words for this letter
     final categories = _get5RandomCategoriesForLetter(upperLetter);
 
-    // Time carries over from previous round (already set)
     // Timer starts on first wheel land, continues for subsequent rounds
     final isFirstRound = state.letterRound == 1;
 
@@ -112,6 +111,7 @@ class GameCubit extends Cubit<GameState> {
       currentCategories: categories,
       categoryIndex: 0,
       category: categories.isNotEmpty ? categories[0] : 'ANIMALS',
+      letterRoundStartScore: state.score, // Track score at start of this letter round
       phase: GamePhase.categoryReveal,
       isPlaying: true,
       clearLastAnswerCorrect: true,
@@ -664,10 +664,22 @@ class GameCubit extends Cubit<GameState> {
     final newWords = [...state.completedWords, word];
     final nextCategoryIndex = state.categoryIndex + 1;
 
+    // Time bonus: +10 seconds per space used (multi-word answers)
+    final timeBonus = state.spaceUsageCount * 10;
+    final newTime = state.timeRemaining + timeBonus;
+
+    // Extra haptic reward for time bonus
+    if (timeBonus > 0) {
+      HapticService.instance.doubleTap();
+    }
+
     // First emit celebration state - keep letters visible for animation
     emit(state.copyWith(
       score: newScore,
+      timeRemaining: newTime,
       lastAnswerCorrect: true,
+      lastTimeBonus: timeBonus > 0 ? timeBonus : null,
+      clearLastTimeBonus: timeBonus == 0,
     ));
 
     // Delay transition to allow celebration animation to play
@@ -690,6 +702,7 @@ class GameCubit extends Cubit<GameState> {
           selectedLetterIds: [],
           committedWord: '',
           clearLastAnswerCorrect: true,
+          clearLastTimeBonus: true,
           phase: GamePhase.categoryReveal, // Show jackpot for next category
           spaceUsageCount: 0, // Reset bonus counts
           repeatUsageCount: 0,
@@ -698,13 +711,9 @@ class GameCubit extends Cubit<GameState> {
     });
   }
 
-  /// Complete a letter round and move to next letter
+  /// Complete a letter round and show celebration screen
   /// Time carries over from previous round minus 10 second penalty
   void _completeLetterRound(int newScore, List<String> newWords) {
-    // Deduct 10 seconds as penalty for moving to next round
-    // Time carries over: if player had 180s remaining, next round starts at 170s
-    final newTime = (state.timeRemaining - 10).clamp(0, 999);
-
     final newCompletedLetters = [...state.completedLetters, state.currentLetter!];
 
     // Check if all 25 letters completed (A-Y, no X)
@@ -713,44 +722,49 @@ class GameCubit extends Cubit<GameState> {
       return;
     }
 
-    // Check if time ran out after deduction
-    if (newTime <= 0) {
-      _endGame(isWinner: false, finalScore: newScore);
-      return;
-    }
+    // STOP the timer during celebration
+    _timer?.cancel();
 
     // Play round complete celebration
     AudioService.instance.play(GameSound.roundComplete);
     HapticService.instance.success();
 
-    // First emit celebration state - keep letters visible, update time immediately
+    // Show letter complete celebration screen
+    // Timer is paused, showing current time (deduction happens when continuing)
     emit(state.copyWith(
       score: newScore,
+      completedWords: newWords,
       completedLetters: newCompletedLetters,
-      timeRemaining: newTime, // Update time immediately so player sees it
+      selectedLetterIds: [],
+      committedWord: '',
       lastAnswerCorrect: true,
+      phase: GamePhase.letterComplete, // New celebration phase
+      isPlaying: false, // Timer is stopped
+      spaceUsageCount: 0,
+      repeatUsageCount: 0,
+    ));
+  }
+
+  /// Continue to next round after letter complete celebration
+  /// Called when user taps "Continue" on the celebration screen
+  void continueToNextRound() {
+    // Add points earned in round as time bonus
+    final newTime = state.timeRemaining + state.pointsEarnedInRound;
+
+    // Move to next letter round with time deduction
+    emit(state.copyWith(
+      letterRound: state.letterRound + 1,
+      timeRemaining: newTime, // Apply 10s deduction here
+      clearLastAnswerCorrect: true,
+      phase: GamePhase.spinningWheel,
+      clearCurrentLetter: true,
+      currentCategories: [],
+      categoryIndex: 0,
+      isPlaying: true, // Resume timer
     ));
 
-    // Delay before transitioning to wheel to show celebration
-    Future.delayed(const Duration(milliseconds: 1200), () {
-      if (isClosed) return;
-
-      // Move to next letter round
-      emit(state.copyWith(
-        completedWords: newWords,
-        letterRound: state.letterRound + 1,
-        selectedLetterIds: [],
-        committedWord: '',
-        clearLastAnswerCorrect: true,
-        phase: GamePhase.spinningWheel,
-        clearCurrentLetter: true,
-        currentCategories: [],
-        categoryIndex: 0,
-        isPlaying: true, // Timer keeps running during wheel spin
-        spaceUsageCount: 0, // Reset bonus counts
-        repeatUsageCount: 0,
-      ));
-    });
+    // Restart the timer
+    _startTimer();
   }
 
   /// Handle wrong answer - deduct time, keep same category

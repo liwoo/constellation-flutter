@@ -24,6 +24,8 @@ enum GamePhase {
   categoryReveal,
   /// Player forming word with constellation
   playingRound,
+  /// Letter round complete - celebration screen
+  letterComplete,
   /// Game over - win or lose
   gameOver,
 }
@@ -35,7 +37,7 @@ class GameState extends Equatable {
     this.committedWord = '', // Word segments already locked in
     this.completedWords = const [],
     this.score = 0,
-    this.timeRemaining = 200, // Start with 200s, carries over between rounds (-5s per round)
+    this.timeRemaining = 200, // Start with 200s
     this.category = '',
     this.difficulty = 2,
     this.isPlaying = false,
@@ -54,6 +56,10 @@ class GameState extends Equatable {
     // Bonus tracking for current word
     this.spaceUsageCount = 0, // Times space button used
     this.repeatUsageCount = 0, // Times x2 button used
+    // Score tracking for time bonus
+    this.letterRoundStartScore = 0, // Score at start of current letter round
+    // Animation feedback
+    this.lastTimeBonus, // Time bonus from last correct answer (for animation)
   });
 
   /// Special ID for space character in selectedLetterIds
@@ -86,6 +92,15 @@ class GameState extends Equatable {
   // Bonus tracking
   final int spaceUsageCount; // Times space button used for current word
   final int repeatUsageCount; // Times x2 button used for current word
+
+  // Score tracking for time bonus calculation
+  final int letterRoundStartScore; // Score at start of current letter round
+
+  // Animation feedback
+  final int? lastTimeBonus; // Time bonus from last correct answer (for animation)
+
+  /// Points earned in current letter round
+  int get pointsEarnedInRound => score - letterRoundStartScore;
 
   /// Categories completed for current letter
   int get categoriesCompletedForLetter => categoryIndex;
@@ -150,6 +165,8 @@ class GameState extends Equatable {
         categoryIndex,
         spaceUsageCount,
         repeatUsageCount,
+        letterRoundStartScore,
+        lastTimeBonus,
       ];
 
   GameState copyWith({
@@ -177,6 +194,9 @@ class GameState extends Equatable {
     int? categoryIndex,
     int? spaceUsageCount,
     int? repeatUsageCount,
+    int? letterRoundStartScore,
+    int? lastTimeBonus,
+    bool clearLastTimeBonus = false,
   }) {
     return GameState(
       letters: letters ?? this.letters,
@@ -200,6 +220,8 @@ class GameState extends Equatable {
       categoryIndex: categoryIndex ?? this.categoryIndex,
       spaceUsageCount: spaceUsageCount ?? this.spaceUsageCount,
       repeatUsageCount: repeatUsageCount ?? this.repeatUsageCount,
+      letterRoundStartScore: letterRoundStartScore ?? this.letterRoundStartScore,
+      lastTimeBonus: clearLastTimeBonus ? null : (lastTimeBonus ?? this.lastTimeBonus),
     );
   }
 }

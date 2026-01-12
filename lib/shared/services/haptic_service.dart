@@ -142,6 +142,21 @@ class HapticService {
     }
   }
 
+  /// Double tap pattern - for bonus rewards (time bonus)
+  Future<void> doubleTap() async {
+    if (!_hapticsEnabled || !_canVibrate) return;
+
+    try {
+      await Haptics.vibrate(HapticsType.heavy);
+      await Future.delayed(const Duration(milliseconds: 80));
+      await Haptics.vibrate(HapticsType.heavy);
+    } catch (e) {
+      await HapticFeedback.heavyImpact();
+      await Future.delayed(const Duration(milliseconds: 80));
+      await HapticFeedback.heavyImpact();
+    }
+  }
+
   /// Enable or disable haptic feedback
   void setHapticsEnabled(bool enabled) {
     _hapticsEnabled = enabled;

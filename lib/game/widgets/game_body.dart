@@ -7,6 +7,7 @@ import 'package:constellation_app/game/widgets/word_display_area.dart';
 import 'package:constellation_app/game/widgets/letter_constellation.dart';
 import 'package:constellation_app/game/widgets/spinning_wheel.dart';
 import 'package:constellation_app/game/widgets/category_jackpot.dart';
+import 'package:constellation_app/game/widgets/animated_counter.dart';
 import 'package:constellation_app/shared/widgets/widgets.dart';
 import 'package:constellation_app/shared/constants/constants.dart';
 import 'package:constellation_app/shared/theme/theme.dart';
@@ -15,18 +16,69 @@ import 'package:constellation_app/shared/services/services.dart';
 /// {@template game_body}
 /// Body of the GamePage - Alpha Quest game mode.
 /// {@endtemplate}
-class GameBody extends StatelessWidget {
+class GameBody extends StatefulWidget {
   /// {@macro game_body}
   const GameBody({super.key});
+
+  @override
+  State<GameBody> createState() => _GameBodyState();
+}
+
+class _GameBodyState extends State<GameBody> with SingleTickerProviderStateMixin {
+  // Animation for floating time bonus
+  late AnimationController _bonusAnimController;
+  late Animation<double> _bonusOpacity;
+  late Animation<double> _bonusOffset;
+  late Animation<double> _bonusScale;
+  int? _displayedBonus;
+
+  @override
+  void initState() {
+    super.initState();
+    _bonusAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    );
+
+    _bonusOpacity = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0), weight: 20),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.0), weight: 50),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0), weight: 30),
+    ]).animate(_bonusAnimController);
+
+    _bonusOffset = Tween<double>(begin: 0, end: -80).animate(
+      CurvedAnimation(parent: _bonusAnimController, curve: Curves.easeOut),
+    );
+
+    _bonusScale = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0.5, end: 1.3), weight: 20),
+      TweenSequenceItem(tween: Tween(begin: 1.3, end: 1.0), weight: 20),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.0), weight: 60),
+    ]).animate(_bonusAnimController);
+  }
+
+  @override
+  void dispose() {
+    _bonusAnimController.dispose();
+    super.dispose();
+  }
+
+  void _showTimeBonus(int bonus) {
+    setState(() {
+      _displayedBonus = bonus;
+    });
+    _bonusAnimController.forward(from: 0);
+  }
 
   @override
   Widget build(BuildContext context) {
     return BlocListener<GameCubit, GameState>(
       listenWhen: (previous, current) =>
-          previous.lastAnswerCorrect != current.lastAnswerCorrect &&
-          current.lastAnswerCorrect != null,
+          previous.lastTimeBonus != current.lastTimeBonus &&
+          current.lastTimeBonus != null &&
+          current.lastTimeBonus! > 0,
       listener: (context, state) {
-        _showFeedbackToast(context, state.lastAnswerCorrect!);
+        _showTimeBonus(state.lastTimeBonus!);
       },
       child: BlocBuilder<GameCubit, GameState>(
         builder: (context, state) {
@@ -43,6 +95,71 @@ class GameBody extends StatelessWidget {
                   child: _buildPhaseContent(context, state),
                 ),
 
+                // Floating time bonus animation
+                if (_displayedBonus != null)
+                  Positioned(
+                    top: MediaQuery.of(context).size.height * 0.15,
+                    left: 0,
+                    right: 0,
+                    child: AnimatedBuilder(
+                      animation: _bonusAnimController,
+                      builder: (context, child) {
+                        return Transform.translate(
+                          offset: Offset(0, _bonusOffset.value),
+                          child: Opacity(
+                            opacity: _bonusOpacity.value,
+                            child: Transform.scale(
+                              scale: _bonusScale.value,
+                              child: Center(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 24,
+                                    vertical: 12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      colors: [
+                                        AppColors.accentGold,
+                                        AppColors.accentOrange,
+                                      ],
+                                    ),
+                                    borderRadius: BorderRadius.circular(30),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: AppColors.accentGold.withAlpha(150),
+                                        blurRadius: 20,
+                                        spreadRadius: 5,
+                                      ),
+                                    ],
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.timer,
+                                        color: AppColors.black,
+                                        size: 28,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        '+${_displayedBonus}s',
+                                        style: GoogleFonts.orbitron(
+                                          color: AppColors.black,
+                                          fontSize: 28,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
                 // Game Over overlay
                 if (state.phase == GamePhase.gameOver)
                   _buildGameOverOverlay(context, state),
@@ -50,47 +167,6 @@ class GameBody extends StatelessWidget {
             ),
           );
         },
-      ),
-    );
-  }
-
-  void _showFeedbackToast(BuildContext context, bool isCorrect) {
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              isCorrect ? Icons.check_circle : Icons.cancel,
-              color: Colors.white,
-              size: 20,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              isCorrect ? 'Correct!' : 'Wrong! (-5s)',
-              style: GoogleFonts.exo2(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: isCorrect
-            ? Colors.green.withAlpha(220)
-            : Colors.red.withAlpha(220),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        margin: const EdgeInsets.only(
-          bottom: 100,
-          left: 50,
-          right: 50,
-        ),
-        duration: const Duration(milliseconds: 1200),
-        dismissDirection: DismissDirection.none,
       ),
     );
   }
@@ -105,6 +181,8 @@ class GameBody extends StatelessWidget {
         return _buildCategoryRevealScreen(context, state);
       case GamePhase.playingRound:
         return _buildPlayingScreen(context, state);
+      case GamePhase.letterComplete:
+        return _buildLetterCompleteScreen(context, state);
       case GamePhase.gameOver:
         return _buildPlayingScreen(context, state); // Show behind overlay
     }
@@ -219,6 +297,146 @@ class GameBody extends StatelessWidget {
           },
         ),
         const Spacer(),
+      ],
+    );
+  }
+
+  Widget _buildLetterCompleteScreen(BuildContext context, GameState state) {
+    final completedLetter = state.currentLetter ?? '?';
+
+    return Column(
+      children: [
+        const Spacer(flex: 2),
+
+        // Celebration icon with pulse animation
+        TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0.8, end: 1.0),
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.elasticOut,
+          builder: (context, scale, child) {
+            return Transform.scale(
+              scale: scale,
+              child: Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: const LinearGradient(
+                    colors: [AppColors.accentGold, AppColors.accentOrange],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.accentGold.withAlpha(150),
+                      blurRadius: 30,
+                      spreadRadius: 10,
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.check,
+                  color: AppColors.black,
+                  size: 60,
+                ),
+              ),
+            );
+          },
+        ),
+
+        const SizedBox(height: 24),
+
+        // Congratulations message
+        Text(
+          'LETTER COMPLETE!',
+          style: GoogleFonts.orbitron(
+            color: AppColors.accentGold,
+            fontSize: 28,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 2,
+          ),
+        ),
+
+        const SizedBox(height: 8),
+
+        // Completed letter badge
+        Text(
+          '"$completedLetter" CLEARED',
+          style: GoogleFonts.exo2(
+            color: Colors.white,
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+
+        const SizedBox(height: 32),
+
+        // Animated stats panel
+        CelebrationStatsPanel(
+          score: state.score,
+          lettersCompleted: state.completedLetters.length,
+          timeRemaining: state.timeRemaining,
+          pointsEarned: state.pointsEarnedInRound,
+        ),
+
+        const Spacer(flex: 1),
+
+        // Continue button - appears after stats animation
+        TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0.0, end: 1.0),
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeOut,
+          // Delay the button appearance
+          builder: (context, opacity, child) {
+            return FutureBuilder(
+              future: Future.delayed(const Duration(milliseconds: 1800)),
+              builder: (context, snapshot) {
+                final show = snapshot.connectionState == ConnectionState.done;
+                return AnimatedOpacity(
+                  opacity: show ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 400),
+                  child: AnimatedScale(
+                    scale: show ? 1.0 : 0.8,
+                    duration: const Duration(milliseconds: 400),
+                    curve: Curves.elasticOut,
+                    child: GestureDetector(
+                      onTap: show
+                          ? () => context.read<GameCubit>().continueToNextRound()
+                          : null,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 48,
+                          vertical: 16,
+                        ),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [AppColors.accentGold, AppColors.accentOrange],
+                          ),
+                          borderRadius: BorderRadius.circular(30),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.accentGold.withAlpha(100),
+                              blurRadius: 20,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                        child: Text(
+                          'CONTINUE',
+                          style: GoogleFonts.orbitron(
+                            color: AppColors.black,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+
+        const Spacer(flex: 2),
       ],
     );
   }
@@ -439,14 +657,21 @@ class GameBody extends StatelessWidget {
   Widget _buildTopBar(BuildContext context, GameState state) {
     return Padding(
       padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.md,
+        horizontal: AppSpacing.sm,
         vertical: AppSpacing.sm,
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Left side: Completed letters count
+          // Home button
+          _buildIconButton(
+            icon: Icons.home,
+            onTap: () => _showExitConfirmation(context),
+          ),
+
+          const SizedBox(width: AppSpacing.xs),
+
+          // Completed letters count
           Column(
             children: [
               _buildCoinBadge(
@@ -466,55 +691,59 @@ class GameBody extends StatelessWidget {
             ],
           ),
 
-          // Center: Score display
-          Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.lg,
-              vertical: AppSpacing.xs,
-            ),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [
-                  AppColors.accentGold,
-                  AppColors.accentOrange,
-                ],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
+          // Center: Score display (expanded to center it)
+          Expanded(
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.md,
+                  vertical: AppSpacing.xs,
+                ),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [
+                      AppColors.accentGold,
+                      AppColors.accentOrange,
+                    ],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.black.withAlpha(60),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'SCORE',
+                      style: TextStyle(
+                        color: AppColors.black.withAlpha(150),
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                    Text(
+                      '${state.score}',
+                      style: const TextStyle(
+                        color: AppColors.black,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.black.withAlpha(60),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'SCORE',
-                  style: TextStyle(
-                    color: AppColors.black.withAlpha(150),
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1,
-                  ),
-                ),
-                Text(
-                  '${state.score}',
-                  style: const TextStyle(
-                    color: AppColors.black,
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
             ),
           ),
 
-          // Right side: Timer badge
+          // Timer badge
           Column(
             children: [
               _buildCoinBadge(
@@ -534,6 +763,118 @@ class GameBody extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+
+          const SizedBox(width: AppSpacing.xs),
+
+          // Restart button
+          _buildIconButton(
+            icon: Icons.refresh,
+            onTap: () => _showRestartConfirmation(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIconButton({required IconData icon, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: AppColors.primaryDarkPurple.withAlpha(200),
+          border: Border.all(
+            color: AppColors.white.withAlpha(80),
+            width: 1.5,
+          ),
+        ),
+        child: Icon(
+          icon,
+          color: AppColors.white.withAlpha(200),
+          size: 18,
+        ),
+      ),
+    );
+  }
+
+  void _showExitConfirmation(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.primaryDarkPurple,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: AppColors.accentGold.withAlpha(100)),
+        ),
+        title: Text(
+          'Exit Game?',
+          style: GoogleFonts.orbitron(color: AppColors.white),
+        ),
+        content: Text(
+          'Your progress will be lost.',
+          style: GoogleFonts.exo2(color: AppColors.white.withAlpha(200)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              'CANCEL',
+              style: GoogleFonts.exo2(color: AppColors.white.withAlpha(150)),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              context.go('/');
+            },
+            child: Text(
+              'EXIT',
+              style: GoogleFonts.exo2(color: AppColors.accentOrange),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showRestartConfirmation(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.primaryDarkPurple,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: AppColors.accentGold.withAlpha(100)),
+        ),
+        title: Text(
+          'Restart Game?',
+          style: GoogleFonts.orbitron(color: AppColors.white),
+        ),
+        content: Text(
+          'Start a new game from the beginning.',
+          style: GoogleFonts.exo2(color: AppColors.white.withAlpha(200)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              'CANCEL',
+              style: GoogleFonts.exo2(color: AppColors.white.withAlpha(150)),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              context.read<GameCubit>().resetGame();
+              context.read<GameCubit>().startGame();
+            },
+            child: Text(
+              'RESTART',
+              style: GoogleFonts.exo2(color: AppColors.accentGold),
+            ),
           ),
         ],
       ),
