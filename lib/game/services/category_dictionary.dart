@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:constellation_app/shared/services/category_service.dart';
 
 /// Category dictionary service for Alpha Quest game mode
@@ -6,6 +8,7 @@ class CategoryDictionary {
   CategoryDictionary._();
 
   static final CategoryDictionary instance = CategoryDictionary._();
+  final _random = Random();
 
   final CategoryService _categoryService = CategoryService.instance;
 
@@ -60,6 +63,14 @@ class CategoryDictionary {
     final categoryObj = _categoryService.getCategoryByName(category);
     if (categoryObj == null) return false;
     return categoryObj.hasWordsForLetter(letter.toUpperCase());
+  }
+
+  /// Get a random word from the category for the given letter
+  /// Used for hints
+  String? getRandomWord(String category, String letter) {
+    final words = getWordsForCategoryAndLetter(category, letter);
+    if (words.isEmpty) return null;
+    return words[_random.nextInt(words.length)];
   }
 
   /// Check if a prefix could lead to a valid word in the category

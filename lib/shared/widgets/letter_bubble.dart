@@ -4,13 +4,14 @@ import 'package:constellation_app/shared/theme/theme.dart';
 import 'package:constellation_app/shared/widgets/badge_widget.dart';
 
 /// White circular letter bubble with star-like glow and point badge
-class LetterBubble extends StatelessWidget {
+class LetterBubble extends StatefulWidget {
   const LetterBubble({
     super.key,
     required this.letter,
     required this.points,
     this.isSelected = false,
     this.isStartingLetter = false,
+    this.isHintLetter = false,
     this.onTap,
     this.size = AppConstants.letterBubbleSize,
   });
@@ -19,19 +20,63 @@ class LetterBubble extends StatelessWidget {
   final int points;
   final bool isSelected;
   final bool isStartingLetter; // Highlight as the letter to start with
+  final bool isHintLetter; // Highlight as part of hint word (animated)
   final VoidCallback? onTap;
   final double size;
 
   @override
+  State<LetterBubble> createState() => _LetterBubbleState();
+}
+
+class _LetterBubbleState extends State<LetterBubble>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _hintAnimController;
+  late Animation<double> _hintPulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _hintAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _hintPulse = Tween<double>(begin: 0.8, end: 1.2).animate(
+      CurvedAnimation(parent: _hintAnimController, curve: Curves.easeInOut),
+    );
+
+    if (widget.isHintLetter) {
+      _hintAnimController.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void didUpdateWidget(LetterBubble oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isHintLetter && !oldWidget.isHintLetter) {
+      _hintAnimController.repeat(reverse: true);
+    } else if (!widget.isHintLetter && oldWidget.isHintLetter) {
+      _hintAnimController.stop();
+      _hintAnimController.reset();
+    }
+  }
+
+  @override
+  void dispose() {
+    _hintAnimController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
+    Widget content = GestureDetector(
+      onTap: widget.onTap,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
           // Outer glow effect (star-like)
-          if (isSelected) _buildSelectedGlow(),
-          if (isStartingLetter && !isSelected) _buildStartingLetterGlow(),
+          if (widget.isSelected) _buildSelectedGlow(),
+          if (widget.isStartingLetter && !widget.isSelected) _buildStartingLetterGlow(),
+          if (widget.isHintLetter) _buildHintGlow(),
           _buildStarGlow(),
 
           // Main letter bubble
@@ -42,15 +87,60 @@ class LetterBubble extends StatelessWidget {
             right: -4,
             top: -4,
             child: BadgeWidget(
-              text: points.toString(),
+              text: widget.points.toString(),
               size: AppConstants.badgeSizeSmall,
-              backgroundColor: isStartingLetter
-                  ? AppColors.accentCyan
-                  : AppColors.accentGold,
-              textColor: isStartingLetter ? Colors.white : AppColors.black,
+              backgroundColor: widget.isHintLetter
+                  ? AppColors.accentOrange
+                  : widget.isStartingLetter
+                      ? AppColors.accentCyan
+                      : AppColors.accentGold,
+              textColor: widget.isStartingLetter ? Colors.white : AppColors.black,
             ),
           ),
         ],
+      ),
+    );
+
+    // Wrap with scale animation if hint letter
+    if (widget.isHintLetter) {
+      return AnimatedBuilder(
+        animation: _hintAnimController,
+        builder: (context, child) {
+          return Transform.scale(
+            scale: _hintPulse.value,
+            child: content,
+          );
+        },
+      );
+    }
+
+    return content;
+  }
+
+  Widget _buildHintGlow() {
+    return Positioned(
+      left: -12,
+      top: -12,
+      right: -12,
+      bottom: -12,
+      child: Container(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          boxShadow: [
+            // Bright orange inner glow
+            BoxShadow(
+              color: AppColors.accentOrange.withAlpha(220),
+              blurRadius: 18,
+              spreadRadius: 4,
+            ),
+            // Outer gold glow
+            BoxShadow(
+              color: AppColors.accentGold.withAlpha(150),
+              blurRadius: 30,
+              spreadRadius: 8,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -116,15 +206,15 @@ class LetterBubble extends StatelessWidget {
           boxShadow: [
             // Soft white glow (star-like luminosity) - more subtle
             BoxShadow(
-              color: Colors.white.withAlpha(isSelected ? 120 : 60),
-              blurRadius: isSelected ? 12 : 8,
-              spreadRadius: isSelected ? 1 : 0,
+              color: Colors.white.withAlpha(widget.isSelected ? 120 : 60),
+              blurRadius: widget.isSelected ? 12 : 8,
+              spreadRadius: widget.isSelected ? 1 : 0,
             ),
             // Secondary softer glow - more subtle
             BoxShadow(
-              color: Colors.white.withAlpha(isSelected ? 50 : 25),
-              blurRadius: isSelected ? 20 : 14,
-              spreadRadius: isSelected ? 2 : 1,
+              color: Colors.white.withAlpha(widget.isSelected ? 50 : 25),
+              blurRadius: widget.isSelected ? 20 : 14,
+              spreadRadius: widget.isSelected ? 2 : 1,
             ),
           ],
         ),
@@ -135,15 +225,17 @@ class LetterBubble extends StatelessWidget {
   Widget _buildBubble() {
     // Determine border based on state
     Border? border;
-    if (isSelected) {
+    if (widget.isHintLetter) {
+      border = Border.all(color: AppColors.accentOrange, width: 3);
+    } else if (widget.isSelected) {
       border = Border.all(color: AppColors.accentGold, width: 3);
-    } else if (isStartingLetter) {
+    } else if (widget.isStartingLetter) {
       border = Border.all(color: AppColors.accentCyan, width: 3);
     }
 
     return Container(
-      width: size,
-      height: size,
+      width: widget.size,
+      height: widget.size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         // Selection/starting ring
@@ -189,9 +281,9 @@ class LetterBubble extends StatelessWidget {
           ),
           child: Center(
             child: Text(
-              letter.toUpperCase(),
+              widget.letter.toUpperCase(),
               style: TextStyle(
-                fontSize: size * 0.4,
+                fontSize: widget.size * 0.4,
                 fontWeight: FontWeight.bold,
                 color: AppColors.black,
                 shadows: [

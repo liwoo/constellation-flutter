@@ -37,7 +37,7 @@ class GameState extends Equatable {
     this.committedWord = '', // Word segments already locked in
     this.completedWords = const [],
     this.score = 0,
-    this.timeRemaining = 200, // Start with 200s
+    this.timeRemaining = 250, // Start with 250s
     this.category = '',
     this.difficulty = 2,
     this.isPlaying = false,
@@ -60,6 +60,9 @@ class GameState extends Equatable {
     this.letterRoundStartScore = 0, // Score at start of current letter round
     // Animation feedback
     this.lastTimeBonus, // Time bonus from last correct answer (for animation)
+    // Hints system
+    this.hintsRemaining = 3, // Player starts with 3 hints
+    this.hintWord, // Word currently being shown as hint (for animation)
   });
 
   /// Special ID for space character in selectedLetterIds
@@ -98,6 +101,10 @@ class GameState extends Equatable {
 
   // Animation feedback
   final int? lastTimeBonus; // Time bonus from last correct answer (for animation)
+
+  // Hints system
+  final int hintsRemaining; // Number of hints left
+  final String? hintWord; // Word currently being shown as hint
 
   /// Points earned in current letter round
   int get pointsEarnedInRound => score - letterRoundStartScore;
@@ -167,6 +174,8 @@ class GameState extends Equatable {
         repeatUsageCount,
         letterRoundStartScore,
         lastTimeBonus,
+        hintsRemaining,
+        hintWord,
       ];
 
   GameState copyWith({
@@ -197,6 +206,9 @@ class GameState extends Equatable {
     int? letterRoundStartScore,
     int? lastTimeBonus,
     bool clearLastTimeBonus = false,
+    int? hintsRemaining,
+    String? hintWord,
+    bool clearHintWord = false,
   }) {
     return GameState(
       letters: letters ?? this.letters,
@@ -222,6 +234,8 @@ class GameState extends Equatable {
       repeatUsageCount: repeatUsageCount ?? this.repeatUsageCount,
       letterRoundStartScore: letterRoundStartScore ?? this.letterRoundStartScore,
       lastTimeBonus: clearLastTimeBonus ? null : (lastTimeBonus ?? this.lastTimeBonus),
+      hintsRemaining: hintsRemaining ?? this.hintsRemaining,
+      hintWord: clearHintWord ? null : (hintWord ?? this.hintWord),
     );
   }
 }

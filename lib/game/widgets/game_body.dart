@@ -483,27 +483,92 @@ class _GameBodyState extends State<GameBody> with SingleTickerProviderStateMixin
 
         const SizedBox(height: AppSpacing.sm),
 
-        // Letter constellation
+        // Letter constellation with hint overlay
         Expanded(
           child: Padding(
             padding: const EdgeInsets.symmetric(
               horizontal: AppSpacing.sm,
             ),
-            child: LetterConstellation(
-              letters: state.letters,
-              selectedLetterIds: state.selectedLetterIds,
-              currentDragPosition: state.currentDragPosition,
-              isDragging: state.isDragging,
-              startingLetter: state.currentLetter,
-              onDragStart: (pos) {
-                context.read<GameCubit>().startDrag(pos);
-              },
-              onDragUpdate: (pos) {
-                context.read<GameCubit>().updateDrag(pos);
-              },
-              onDragEnd: () {
-                context.read<GameCubit>().endDrag();
-              },
+            child: Stack(
+              children: [
+                LetterConstellation(
+                  letters: state.letters,
+                  selectedLetterIds: state.selectedLetterIds,
+                  currentDragPosition: state.currentDragPosition,
+                  isDragging: state.isDragging,
+                  startingLetter: state.currentLetter,
+                  hintWord: state.hintWord,
+                  onDragStart: (pos) {
+                    context.read<GameCubit>().startDrag(pos);
+                  },
+                  onDragUpdate: (pos) {
+                    context.read<GameCubit>().updateDrag(pos);
+                  },
+                  onDragEnd: () {
+                    context.read<GameCubit>().endDrag();
+                  },
+                ),
+                // Floating hint word display
+                if (state.hintWord != null)
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0.0, end: 1.0),
+                        duration: const Duration(milliseconds: 300),
+                        builder: (context, opacity, child) {
+                          return Opacity(
+                            opacity: opacity,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [
+                                    AppColors.accentOrange,
+                                    AppColors.accentGold,
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: AppColors.accentOrange.withAlpha(150),
+                                    blurRadius: 12,
+                                    spreadRadius: 2,
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.lightbulb,
+                                    color: AppColors.black,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    state.hintWord!.toUpperCase(),
+                                    style: GoogleFonts.orbitron(
+                                      color: AppColors.black,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 2,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ),
@@ -1000,16 +1065,18 @@ class _GameBodyState extends State<GameBody> with SingleTickerProviderStateMixin
     final canAddSpace = hasSelection;
     // Can repeat only if we have current selection
     final canRepeat = hasSelection;
+    // Can use hint if hints remaining and no hint currently showing
+    final canUseHint = state.hintsRemaining > 0 && state.hintWord == null;
 
     return Padding(
       padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.md,
+        horizontal: AppSpacing.sm,
         vertical: AppSpacing.sm,
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          // DEL button (left side) - clears everything
+          // DEL button - clears everything
           GestureDetector(
             onTap: hasContent
                 ? () => context.read<GameCubit>().clearSelection()
@@ -1018,12 +1085,11 @@ class _GameBodyState extends State<GameBody> with SingleTickerProviderStateMixin
               label: 'DEL',
               isSubmit: false,
               isActive: hasContent,
-              size: 55,
+              size: 48,
             ),
           ),
 
           // SPACE button - commits current selection and allows fresh drag
-          // Bonus themed with usage count badge
           GestureDetector(
             onTap: canAddSpace
                 ? () => context.read<GameCubit>().insertSpace()
@@ -1031,15 +1097,14 @@ class _GameBodyState extends State<GameBody> with SingleTickerProviderStateMixin
             child: ActionBubble(
               label: '␣',
               isSubmit: false,
-              isBonus: true, // Gold bonus theme
+              isBonus: true,
               isActive: canAddSpace,
-              size: 55,
-              badgeCount: state.spaceUsageCount, // Show usage count
+              size: 48,
+              badgeCount: state.spaceUsageCount,
             ),
           ),
 
           // x2 button (repeat last letter for doubles like SS)
-          // Bonus themed with usage count badge
           GestureDetector(
             onTap: canRepeat
                 ? () => context.read<GameCubit>().repeatLastLetter()
@@ -1047,14 +1112,29 @@ class _GameBodyState extends State<GameBody> with SingleTickerProviderStateMixin
             child: ActionBubble(
               label: 'x2',
               isSubmit: false,
-              isBonus: true, // Gold bonus theme
+              isBonus: true,
               isActive: canRepeat,
-              size: 55,
-              badgeCount: state.repeatUsageCount, // Show usage count
+              size: 48,
+              badgeCount: state.repeatUsageCount,
             ),
           ),
 
-          // GO button (right side) - submits full word (committed + selection)
+          // HINT button - shows a valid word
+          GestureDetector(
+            onTap: canUseHint
+                ? () => context.read<GameCubit>().useHint()
+                : null,
+            child: ActionBubble(
+              label: '?',
+              isSubmit: false,
+              isHint: true,
+              isActive: canUseHint,
+              size: 48,
+              badgeCount: state.hintsRemaining,
+            ),
+          ),
+
+          // GO button - submits full word (committed + selection)
           GestureDetector(
             onTap: hasContent
                 ? () => context.read<GameCubit>().submitWord()
@@ -1063,7 +1143,7 @@ class _GameBodyState extends State<GameBody> with SingleTickerProviderStateMixin
               label: 'GO',
               isSubmit: true,
               isActive: hasContent,
-              size: 55,
+              size: 48,
             ),
           ),
         ],

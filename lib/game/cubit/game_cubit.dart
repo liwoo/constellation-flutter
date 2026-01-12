@@ -65,7 +65,7 @@ class GameCubit extends Cubit<GameState> {
   void startGame() {
     _initializeLetters();
     emit(state.copyWith(
-      timeRemaining: 200, // Start with 200 seconds, carries over between rounds (-5s per round)
+      timeRemaining: 250, // Start with 250 seconds, carries over between rounds
       score: 0,
       letterRound: 1,
       completedLetters: [],
@@ -77,6 +77,8 @@ class GameCubit extends Cubit<GameState> {
       currentCategories: [],
       categoryIndex: 0,
       clearLastAnswerCorrect: true,
+      hintsRemaining: 3, // Start with 3 hints
+      clearHintWord: true,
     ));
   }
 
@@ -103,9 +105,6 @@ class GameCubit extends Cubit<GameState> {
     // Get 5 random categories that have words for this letter
     final categories = _get5RandomCategoriesForLetter(upperLetter);
 
-    // Timer starts on first wheel land, continues for subsequent rounds
-    final isFirstRound = state.letterRound == 1;
-
     emit(state.copyWith(
       currentLetter: upperLetter,
       currentCategories: categories,
@@ -117,10 +116,8 @@ class GameCubit extends Cubit<GameState> {
       clearLastAnswerCorrect: true,
     ));
 
-    // Start timer only on first round (subsequent rounds timer continues)
-    if (isFirstRound) {
-      _startTimer();
-    }
+    // Start timer when wheel lands (every round)
+    _startTimer();
   }
 
   /// Called when category jackpot animation completes
@@ -586,6 +583,42 @@ class GameCubit extends Cubit<GameState> {
     ));
   }
 
+  /// Use a hint - shows a random valid word for the current letter/category
+  /// Returns true if hint was used, false if no hints remaining
+  bool useHint() {
+    if (state.hintsRemaining <= 0) return false;
+    if (state.currentLetter == null) return false;
+
+    // Get a random valid word from the dictionary
+    final hintWord = _dictionary.getRandomWord(
+      state.category,
+      state.currentLetter!,
+    );
+
+    if (hintWord == null) return false;
+
+    // Haptic feedback for hint
+    HapticService.instance.medium();
+
+    emit(state.copyWith(
+      hintsRemaining: state.hintsRemaining - 1,
+      hintWord: hintWord,
+    ));
+
+    // Clear the hint after animation time
+    Future.delayed(const Duration(milliseconds: 2500), () {
+      if (isClosed) return;
+      emit(state.copyWith(clearHintWord: true));
+    });
+
+    return true;
+  }
+
+  /// Clear the hint word (called after animation)
+  void clearHint() {
+    emit(state.copyWith(clearHintWord: true));
+  }
+
   void submitWord() {
     if (state.currentWord.length < 2) return;
 
@@ -742,6 +775,7 @@ class GameCubit extends Cubit<GameState> {
       isPlaying: false, // Timer is stopped
       spaceUsageCount: 0,
       repeatUsageCount: 0,
+      hintsRemaining: state.hintsRemaining + 1, // Award extra hint for completing letter
     ));
   }
 
@@ -752,20 +786,18 @@ class GameCubit extends Cubit<GameState> {
     // e.g., 20s remaining + 70pts = (20 * 2) + 70 = 110s
     final newTime = (state.timeRemaining * 2) + state.pointsEarnedInRound;
 
-    // Move to next letter round with time deduction
+    // Move to next letter round - timer stays paused until wheel lands
     emit(state.copyWith(
       letterRound: state.letterRound + 1,
-      timeRemaining: newTime, // Apply 10s deduction here
+      timeRemaining: newTime,
       clearLastAnswerCorrect: true,
       phase: GamePhase.spinningWheel,
       clearCurrentLetter: true,
       currentCategories: [],
       categoryIndex: 0,
-      isPlaying: true, // Resume timer
+      isPlaying: false, // Timer paused until wheel lands
     ));
-
-    // Restart the timer
-    _startTimer();
+    // Note: Timer will start in onWheelLanded()
   }
 
   /// Handle wrong answer - deduct time, keep same category
@@ -837,7 +869,7 @@ class GameCubit extends Cubit<GameState> {
     emit(state.copyWith(
       phase: GamePhase.notStarted,
       score: 0,
-      timeRemaining: 200, // Reset to starting time
+      timeRemaining: 250, // Reset to starting time
       completedLetters: [],
       completedWords: [],
       letterRound: 1,
@@ -850,6 +882,8 @@ class GameCubit extends Cubit<GameState> {
       currentCategories: [],
       categoryIndex: 0,
       clearLastAnswerCorrect: true,
+      hintsRemaining: 3, // Reset hints
+      clearHintWord: true,
     ));
   }
 

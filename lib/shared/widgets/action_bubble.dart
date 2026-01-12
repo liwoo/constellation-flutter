@@ -10,6 +10,7 @@ class ActionBubble extends StatelessWidget {
     required this.label,
     required this.isSubmit,
     this.isBonus = false,
+    this.isHint = false,
     this.isActive = false,
     this.onTap,
     this.size = AppConstants.letterBubbleSize,
@@ -19,6 +20,7 @@ class ActionBubble extends StatelessWidget {
   final String label;
   final bool isSubmit; // true = GO (green), false = DEL (red) or bonus
   final bool isBonus; // true = bonus button (gold/orange)
+  final bool isHint; // true = hint button (cyan/purple)
   final bool isActive;
   final VoidCallback? onTap;
   final double size;
@@ -28,7 +30,9 @@ class ActionBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     // Use greyed out colors when inactive
     Color activeColor;
-    if (isBonus) {
+    if (isHint) {
+      activeColor = AppColors.accentCyan; // Cyan for hint button
+    } else if (isBonus) {
       activeColor = AppColors.accentGold; // Gold for bonus buttons
     } else if (isSubmit) {
       activeColor = const Color(0xFF4CAF50); // Green for GO
