@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:constellation_app/main_menu/main_menu.dart';
 import 'package:constellation_app/game/game.dart';
+import 'package:constellation_app/practice/practice.dart';
 import 'package:constellation_app/settings/settings.dart';
 
 /// App router configuration using GoRouter
@@ -51,6 +52,16 @@ class AppRouter {
           pageBuilder: (context, state) => MaterialPage(
             key: state.pageKey,
             child: const SettingsPage(),
+          ),
+        ),
+
+        // Practice route
+        GoRoute(
+          path: '/practice',
+          name: 'practice',
+          pageBuilder: (context, state) => MaterialPage(
+            key: state.pageKey,
+            child: const PracticePage(),
           ),
         ),
       ],

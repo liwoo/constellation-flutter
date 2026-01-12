@@ -9,7 +9,7 @@ import 'package:constellation_app/shared/theme/theme.dart';
 /// {@template settings_body}
 /// Body of the SettingsPage.
 ///
-/// Settings screen with sound, music toggles and timer duration selector
+/// Settings screen with sound, haptics toggles and timer duration selector
 /// {@endtemplate}
 class SettingsBody extends StatefulWidget {
   /// {@macro settings_body}
@@ -20,8 +20,6 @@ class SettingsBody extends StatefulWidget {
 }
 
 class _SettingsBodyState extends State<SettingsBody> {
-  bool _soundEnabled = true;
-  bool _musicEnabled = true;
   int _selectedTimer = AppConstants.timerMedium;
 
   @override
@@ -88,11 +86,11 @@ class _SettingsBodyState extends State<SettingsBody> {
                                 title: 'Sound Effects',
                                 subtitle: 'Enable game sound effects',
                                 trailing: PlatformSwitch(
-                                  value: _soundEnabled,
+                                  value: state.soundEnabled,
                                   onChanged: (value) {
-                                    setState(() {
-                                      _soundEnabled = value;
-                                    });
+                                    context
+                                        .read<SettingsCubit>()
+                                        .setSoundEnabled(value);
                                   },
                                   material: (_, __) => MaterialSwitchData(
                                     activeColor: AppColors.accentGold,
@@ -102,18 +100,18 @@ class _SettingsBodyState extends State<SettingsBody> {
 
                               const SizedBox(height: AppSpacing.md),
 
-                              // Music toggle
+                              // Haptics toggle
                               _buildSettingCard(
                                 context: context,
-                                icon: Icons.music_note,
-                                title: 'Background Music',
-                                subtitle: 'Play background music',
+                                icon: Icons.vibration,
+                                title: 'Haptic Feedback',
+                                subtitle: 'Enable vibration feedback',
                                 trailing: PlatformSwitch(
-                                  value: _musicEnabled,
+                                  value: state.hapticsEnabled,
                                   onChanged: (value) {
-                                    setState(() {
-                                      _musicEnabled = value;
-                                    });
+                                    context
+                                        .read<SettingsCubit>()
+                                        .setHapticsEnabled(value);
                                   },
                                   material: (_, __) => MaterialSwitchData(
                                     activeColor: AppColors.accentGold,
@@ -192,10 +190,10 @@ class _SettingsBodyState extends State<SettingsBody> {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: AppColors.white.withOpacity(0.1),
+        color: AppColors.white.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(AppBorderRadius.md),
         border: Border.all(
-          color: AppColors.white.withOpacity(0.2),
+          color: AppColors.white.withValues(alpha: 0.2),
           width: 1,
         ),
       ),
@@ -205,7 +203,7 @@ class _SettingsBodyState extends State<SettingsBody> {
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: AppColors.accentGold.withOpacity(0.2),
+              color: AppColors.accentGold.withValues(alpha: 0.2),
               shape: BoxShape.circle,
             ),
             child: Icon(
@@ -230,7 +228,7 @@ class _SettingsBodyState extends State<SettingsBody> {
                 Text(
                   subtitle,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppColors.white.withOpacity(0.7),
+                        color: AppColors.white.withValues(alpha: 0.7),
                       ),
                 ),
               ],
@@ -258,13 +256,13 @@ class _SettingsBodyState extends State<SettingsBody> {
         padding: const EdgeInsets.all(AppSpacing.md),
         decoration: BoxDecoration(
           color: isSelected
-              ? AppColors.accentGold.withOpacity(0.2)
-              : AppColors.white.withOpacity(0.1),
+              ? AppColors.accentGold.withValues(alpha: 0.2)
+              : AppColors.white.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(AppBorderRadius.md),
           border: Border.all(
             color: isSelected
                 ? AppColors.accentGold
-                : AppColors.white.withOpacity(0.2),
+                : AppColors.white.withValues(alpha: 0.2),
             width: isSelected ? 2 : 1,
           ),
         ),

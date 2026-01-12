@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:constellation_app/game/cubit/game_cubit.dart';
 import 'package:constellation_app/game/widgets/word_display_area.dart';
@@ -9,6 +10,7 @@ import 'package:constellation_app/game/widgets/category_jackpot.dart';
 import 'package:constellation_app/shared/widgets/widgets.dart';
 import 'package:constellation_app/shared/constants/constants.dart';
 import 'package:constellation_app/shared/theme/theme.dart';
+import 'package:constellation_app/shared/services/services.dart';
 
 /// {@template game_body}
 /// Body of the GamePage - Alpha Quest game mode.
@@ -19,28 +21,77 @@ class GameBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<GameCubit, GameState>(
-      builder: (context, state) {
-        return GradientBackground(
-          child: Stack(
-            children: [
-              // Star decorations
-              const Positioned.fill(
-                child: StarDecoration(starCount: 100, starSize: 2),
-              ),
-
-              // Main content based on game phase
-              SafeArea(
-                child: _buildPhaseContent(context, state),
-              ),
-
-              // Game Over overlay
-              if (state.phase == GamePhase.gameOver)
-                _buildGameOverOverlay(context, state),
-            ],
-          ),
-        );
+    return BlocListener<GameCubit, GameState>(
+      listenWhen: (previous, current) =>
+          previous.lastAnswerCorrect != current.lastAnswerCorrect &&
+          current.lastAnswerCorrect != null,
+      listener: (context, state) {
+        _showFeedbackToast(context, state.lastAnswerCorrect!);
       },
+      child: BlocBuilder<GameCubit, GameState>(
+        builder: (context, state) {
+          return GradientBackground(
+            child: Stack(
+              children: [
+                // Star decorations
+                const Positioned.fill(
+                  child: StarDecoration(starCount: 100, starSize: 2),
+                ),
+
+                // Main content based on game phase
+                SafeArea(
+                  child: _buildPhaseContent(context, state),
+                ),
+
+                // Game Over overlay
+                if (state.phase == GamePhase.gameOver)
+                  _buildGameOverOverlay(context, state),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _showFeedbackToast(BuildContext context, bool isCorrect) {
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              isCorrect ? Icons.check_circle : Icons.cancel,
+              color: Colors.white,
+              size: 20,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              isCorrect ? 'Correct!' : 'Wrong! (-5s)',
+              style: GoogleFonts.exo2(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: isCorrect
+            ? Colors.green.withAlpha(220)
+            : Colors.red.withAlpha(220),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        margin: const EdgeInsets.only(
+          bottom: 100,
+          left: 50,
+          right: 50,
+        ),
+        duration: const Duration(milliseconds: 1200),
+        dismissDirection: DismissDirection.none,
+      ),
     );
   }
 
@@ -75,7 +126,7 @@ class GameBody extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text(
-            'Complete all 26 letters\nbefore time runs out!',
+            'Complete all 25 letters\nTime carries over - bonus for x2 & spaces!',
             textAlign: TextAlign.center,
             style: GoogleFonts.exo2(
               color: Colors.white.withAlpha(200),
@@ -119,7 +170,8 @@ class GameBody extends StatelessWidget {
   }
 
   Widget _buildWheelScreen(BuildContext context, GameState state) {
-    final remainingLetters = context.read<GameCubit>().getRemainingLetters();
+    // Use weighted letters - easier letters more likely early in game
+    final remainingLetters = context.read<GameCubit>().getWeightedRemainingLetters();
 
     return Column(
       children: [
@@ -201,17 +253,14 @@ class GameBody extends StatelessWidget {
           ],
         ),
 
-        // Feedback message
-        if (state.lastAnswerCorrect != null) ...[
-          const SizedBox(height: AppSpacing.sm),
-          _buildFeedbackMessage(state.lastAnswerCorrect!),
-        ],
-
         const SizedBox(height: AppSpacing.sm),
 
         // Word display area
         WordDisplayArea(
           selectedLetters: state.selectedLetters,
+          committedWord: state.committedWord,
+          celebrate: state.lastAnswerCorrect == true,
+          shake: state.lastAnswerCorrect == false,
         ),
 
         const SizedBox(height: AppSpacing.sm),
@@ -268,26 +317,6 @@ class GameBody extends StatelessWidget {
             fontSize: 10,
             fontWeight: FontWeight.bold,
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFeedbackMessage(bool isCorrect) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: isCorrect
-            ? Colors.green.withAlpha(100)
-            : Colors.red.withAlpha(100),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        isCorrect ? 'Correct!' : 'Wrong! Try again (-5s)',
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 14,
-          fontWeight: FontWeight.bold,
         ),
       ),
     );
@@ -595,38 +624,75 @@ class GameBody extends StatelessWidget {
 
   Widget _buildActionButtons(BuildContext context, GameState state) {
     final hasSelection = state.selectedLetterIds.isNotEmpty;
+    final hasContent = state.hasWordContent; // Either committed or selected
+    // Can add space only if we have current selection (not just committed)
+    final canAddSpace = hasSelection;
+    // Can repeat only if we have current selection
+    final canRepeat = hasSelection;
 
     return Padding(
       padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.xl,
+        horizontal: AppSpacing.md,
         vertical: AppSpacing.sm,
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // DEL button (left side)
+          // DEL button (left side) - clears everything
           GestureDetector(
-            onTap: hasSelection
+            onTap: hasContent
                 ? () => context.read<GameCubit>().clearSelection()
                 : null,
             child: ActionBubble(
               label: 'DEL',
               isSubmit: false,
-              isActive: hasSelection,
-              size: 65,
+              isActive: hasContent,
+              size: 55,
             ),
           ),
 
-          // GO button (right side)
+          // SPACE button - commits current selection and allows fresh drag
+          // Bonus themed with usage count badge
           GestureDetector(
-            onTap: hasSelection
+            onTap: canAddSpace
+                ? () => context.read<GameCubit>().insertSpace()
+                : null,
+            child: ActionBubble(
+              label: '␣',
+              isSubmit: false,
+              isBonus: true, // Gold bonus theme
+              isActive: canAddSpace,
+              size: 55,
+              badgeCount: state.spaceUsageCount, // Show usage count
+            ),
+          ),
+
+          // x2 button (repeat last letter for doubles like SS)
+          // Bonus themed with usage count badge
+          GestureDetector(
+            onTap: canRepeat
+                ? () => context.read<GameCubit>().repeatLastLetter()
+                : null,
+            child: ActionBubble(
+              label: 'x2',
+              isSubmit: false,
+              isBonus: true, // Gold bonus theme
+              isActive: canRepeat,
+              size: 55,
+              badgeCount: state.repeatUsageCount, // Show usage count
+            ),
+          ),
+
+          // GO button (right side) - submits full word (committed + selection)
+          GestureDetector(
+            onTap: hasContent
                 ? () => context.read<GameCubit>().submitWord()
                 : null,
             child: ActionBubble(
               label: 'GO',
               isSubmit: true,
-              isActive: hasSelection,
-              size: 65,
+              isActive: hasContent,
+              size: 55,
             ),
           ),
         ],
@@ -698,6 +764,8 @@ class GameBody extends StatelessWidget {
                   fontWeight: FontWeight.bold,
                 ),
               ),
+              // High score comparison
+              _buildHighScoreDisplay(state.score),
               const SizedBox(height: 16),
               Text(
                 'Letters: ${state.completedLetters.length}/${GameState.totalLetters}',
@@ -707,6 +775,7 @@ class GameBody extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 32),
+              // Try Again button
               GestureDetector(
                 onTap: () => context.read<GameCubit>().resetGame(),
                 child: Container(
@@ -721,10 +790,37 @@ class GameBody extends StatelessWidget {
                     borderRadius: BorderRadius.circular(30),
                   ),
                   child: Text(
-                    'PLAY AGAIN',
+                    'TRY AGAIN',
                     style: GoogleFonts.orbitron(
                       color: AppColors.black,
                       fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Menu button
+              GestureDetector(
+                onTap: () => context.go('/'),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 48,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(
+                      color: Colors.white.withAlpha(150),
+                      width: 2,
+                    ),
+                  ),
+                  child: Text(
+                    'MENU',
+                    style: GoogleFonts.orbitron(
+                      color: Colors.white.withAlpha(200),
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -734,6 +830,66 @@ class GameBody extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildHighScoreDisplay(int currentScore) {
+    return FutureBuilder<int>(
+      future: StorageService.instance.getHighScore(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const SizedBox.shrink();
+        }
+
+        final highScore = snapshot.data!;
+        final isNewHighScore = currentScore >= highScore && currentScore > 0;
+
+        if (isNewHighScore) {
+          return Column(
+            children: [
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [AppColors.accentGold, AppColors.accentOrange],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Text(
+                  'NEW HIGH SCORE!',
+                  style: GoogleFonts.orbitron(
+                    color: AppColors.black,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1,
+                  ),
+                ),
+              ),
+            ],
+          );
+        }
+
+        if (highScore > 0) {
+          return Column(
+            children: [
+              const SizedBox(height: 8),
+              Text(
+                'Best: $highScore',
+                style: GoogleFonts.exo2(
+                  color: AppColors.accentGold.withAlpha(200),
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          );
+        }
+
+        return const SizedBox.shrink();
+      },
     );
   }
 }

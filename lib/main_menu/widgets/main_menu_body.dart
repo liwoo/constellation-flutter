@@ -47,6 +47,18 @@ class MainMenuBody extends StatelessWidget {
                 child: _ConstellationDecoration(size: 50),
               ),
 
+              // Settings icon in bottom right corner
+              Positioned(
+                bottom: 16,
+                right: 16,
+                child: SafeArea(
+                  child: _IconButton(
+                    icon: Icons.settings,
+                    onPressed: () => context.go('/settings'),
+                  ),
+                ),
+              ),
+
               // Main content
               SafeArea(
                 child: Column(
@@ -161,6 +173,16 @@ class MainMenuBody extends StatelessWidget {
 
                         const SizedBox(height: AppSpacing.md),
 
+                        // Practice mode
+                        GameButton(
+                          text: 'PRACTICE',
+                          onPressed: () => context.go('/practice'),
+                          isPrimary: false,
+                          width: _buttonWidth,
+                        ),
+
+                        const SizedBox(height: AppSpacing.md),
+
                         // How to Play
                         GameButton(
                           text: 'HOW TO PLAY',
@@ -178,30 +200,25 @@ class MainMenuBody extends StatelessWidget {
                           isPrimary: false,
                           width: _buttonWidth,
                         ),
-
-                        const SizedBox(height: AppSpacing.md),
-
-                        // Settings
-                        GameButton(
-                          text: 'SETTINGS',
-                          onPressed: () => context.go('/settings'),
-                          isPrimary: false,
-                          width: _buttonWidth,
-                        ),
                       ],
                     ),
 
                     const Spacer(flex: 2),
 
-                    // Footer
+                    // Footer with settings icon
                     Padding(
                       padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                      child: Text(
-                        'v1.0.0',
-                        style: GoogleFonts.exo2(
-                          color: AppColors.white.withAlpha(102),
-                          fontSize: 12,
-                        ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            'v1.0.0',
+                            style: GoogleFonts.exo2(
+                              color: AppColors.white.withAlpha(102),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -223,12 +240,39 @@ class MainMenuBody extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _HighScoreRow(rank: 1, name: state.playerName, score: state.highScore),
-            const SizedBox(height: AppSpacing.sm),
-            const _HighScoreRow(rank: 2, name: '---', score: 0),
-            const SizedBox(height: AppSpacing.sm),
-            const _HighScoreRow(rank: 3, name: '---', score: 0),
+            // Stats summary
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _MiniStat(label: 'GAMES', value: state.gamesPlayed.toString()),
+                _MiniStat(label: 'WINS', value: state.totalWins.toString()),
+                _MiniStat(label: 'BEST', value: state.highScore.toString()),
+              ],
+            ),
             const SizedBox(height: AppSpacing.lg),
+            // Top scores list
+            if (state.topScores.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+                child: Text(
+                  'No games played yet!\nStart playing to set records.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.exo2(
+                    color: AppColors.white.withAlpha(150),
+                    fontSize: 14,
+                  ),
+                ),
+              )
+            else
+              ...state.topScores.take(5).map((entry) => Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                child: _HighScoreRow(
+                  rank: entry.rank,
+                  score: entry.score,
+                  lettersCompleted: entry.lettersCompleted,
+                ),
+              )),
+            const SizedBox(height: AppSpacing.md),
             GameButton(
               text: 'CLOSE',
               onPressed: () => Navigator.of(context).pop(),
@@ -688,17 +732,54 @@ class _StatItem extends StatelessWidget {
   }
 }
 
+/// Mini stat for high scores dialog header
+class _MiniStat extends StatelessWidget {
+  const _MiniStat({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: GoogleFonts.exo2(
+            color: AppColors.white.withAlpha(150),
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 1,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: GoogleFonts.orbitron(
+            color: AppColors.accentGold,
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// High score row for leaderboard
 class _HighScoreRow extends StatelessWidget {
   const _HighScoreRow({
     required this.rank,
-    required this.name,
     required this.score,
+    this.lettersCompleted = 0,
   });
 
   final int rank;
-  final String name;
   final int score;
+  final int lettersCompleted;
 
   @override
   Widget build(BuildContext context) {
@@ -706,7 +787,9 @@ class _HighScoreRow extends StatelessWidget {
         ? AppColors.accentGold
         : rank == 2
             ? AppColors.greyLight
-            : AppColors.accentOrange;
+            : rank == 3
+                ? AppColors.accentOrange
+                : AppColors.primaryPurple;
 
     return Container(
       padding: const EdgeInsets.symmetric(
@@ -716,52 +799,75 @@ class _HighScoreRow extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.white.withAlpha(26),
         borderRadius: BorderRadius.circular(AppBorderRadius.md),
+        border: rank <= 3
+            ? Border.all(color: rankColor.withAlpha(100), width: 1)
+            : null,
       ),
       child: Row(
         children: [
           Container(
-            width: 32,
-            height: 32,
+            width: 28,
+            height: 28,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: rankColor,
             ),
             child: Center(
-              child: Text(
-                rank.toString(),
-                style: GoogleFonts.orbitron(
-                  color: rank == 1 ? AppColors.black : AppColors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                ),
-              ),
+              child: rank <= 3
+                  ? Icon(
+                      Icons.emoji_events,
+                      color: rank == 1 ? AppColors.black : AppColors.white,
+                      size: 16,
+                    )
+                  : Text(
+                      rank.toString(),
+                      style: GoogleFonts.orbitron(
+                        color: AppColors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
             ),
           ),
           const SizedBox(width: AppSpacing.md),
           Expanded(
-            child: Text(
-              name,
-              style: GoogleFonts.exo2(
-                color: AppColors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-          Text(
-            score.toString(),
-            style: GoogleFonts.orbitron(
-              color: AppColors.accentGold,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              shadows: [
-                Shadow(
-                  color: AppColors.accentGold.withAlpha(128),
-                  blurRadius: 4,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$score pts',
+                  style: GoogleFonts.orbitron(
+                    color: AppColors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  '$lettersCompleted/25 letters',
+                  style: GoogleFonts.exo2(
+                    color: AppColors.white.withAlpha(150),
+                    fontSize: 11,
+                  ),
                 ),
               ],
             ),
           ),
+          if (lettersCompleted >= 25)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppColors.accentGold,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                'WIN',
+                style: GoogleFonts.orbitron(
+                  color: AppColors.black,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
         ],
       ),
     );

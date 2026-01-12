@@ -6,24 +6,31 @@ part of 'settings_cubit.dart';
 class SettingsState extends Equatable {
   /// {@macro settings}
   const SettingsState({
-    this.customProperty = 'Default Value',
+    this.soundEnabled = true,
+    this.hapticsEnabled = true,
   });
 
-  /// A description for customProperty
-  final String customProperty;
+  /// Whether sound effects are enabled
+  final bool soundEnabled;
+
+  /// Whether haptic feedback is enabled
+  final bool hapticsEnabled;
 
   @override
-  List<Object> get props => [customProperty];
+  List<Object> get props => [soundEnabled, hapticsEnabled];
 
   /// Creates a copy of the current SettingsState with property changes
   SettingsState copyWith({
-    String? customProperty,
+    bool? soundEnabled,
+    bool? hapticsEnabled,
   }) {
     return SettingsState(
-      customProperty: customProperty ?? this.customProperty,
+      soundEnabled: soundEnabled ?? this.soundEnabled,
+      hapticsEnabled: hapticsEnabled ?? this.hapticsEnabled,
     );
   }
 }
+
 /// {@template settings_initial}
 /// The initial state of SettingsState
 /// {@endtemplate}

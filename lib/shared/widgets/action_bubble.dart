@@ -2,30 +2,39 @@ import 'package:flutter/material.dart';
 import 'package:constellation_app/shared/constants/constants.dart';
 import 'package:constellation_app/shared/theme/theme.dart';
 
-/// Action bubble for GO (submit) and DEL (delete) actions
+/// Action bubble for GO (submit), DEL (delete), and bonus actions (space, x2)
 /// Styled differently from letter bubbles to stand out
 class ActionBubble extends StatelessWidget {
   const ActionBubble({
     super.key,
     required this.label,
     required this.isSubmit,
+    this.isBonus = false,
     this.isActive = false,
     this.onTap,
     this.size = AppConstants.letterBubbleSize,
+    this.badgeCount = 0, // Shows count badge if > 0
   });
 
   final String label;
-  final bool isSubmit; // true = GO (green), false = DEL (red)
+  final bool isSubmit; // true = GO (green), false = DEL (red) or bonus
+  final bool isBonus; // true = bonus button (gold/orange)
   final bool isActive;
   final VoidCallback? onTap;
   final double size;
+  final int badgeCount; // Shows usage count badge
 
   @override
   Widget build(BuildContext context) {
     // Use greyed out colors when inactive
-    final Color activeColor = isSubmit
-        ? const Color(0xFF4CAF50) // Green for GO
-        : const Color(0xFFE91E63); // Pink/Red for DEL
+    Color activeColor;
+    if (isBonus) {
+      activeColor = AppColors.accentGold; // Gold for bonus buttons
+    } else if (isSubmit) {
+      activeColor = const Color(0xFF4CAF50); // Green for GO
+    } else {
+      activeColor = const Color(0xFFE91E63); // Pink/Red for DEL
+    }
 
     final Color baseColor = isActive
         ? activeColor
@@ -47,7 +56,46 @@ class ActionBubble extends StatelessWidget {
 
             // Main bubble
             _buildBubble(baseColor, lighterColor, darkerColor),
+
+            // Badge count (for bonus buttons)
+            if (badgeCount > 0) _buildBadge(),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBadge() {
+    return Positioned(
+      right: -4,
+      top: -4,
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: AppColors.accentOrange,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.black.withAlpha(100),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        constraints: const BoxConstraints(
+          minWidth: 18,
+          minHeight: 18,
+        ),
+        child: Center(
+          child: Text(
+            '+$badgeCount',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         ),
       ),
     );

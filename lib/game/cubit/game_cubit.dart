@@ -5,6 +5,8 @@ import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/material.dart';
 import 'package:constellation_app/game/services/category_dictionary.dart';
+import 'package:constellation_app/shared/models/models.dart';
+import 'package:constellation_app/shared/services/services.dart';
 
 part 'game_state.dart';
 
@@ -38,6 +40,21 @@ class GameCubit extends Cubit<GameState> {
     'Y': 4, 'Z': 10,
   };
 
+  // Letter difficulty levels (1 = easiest, 5 = hardest)
+  // Based on frequency of words starting with these letters in categories
+  static const Map<String, int> _letterDifficulty = {
+    // Difficulty 1: Very common starting letters
+    'A': 1, 'B': 1, 'C': 1, 'S': 1, 'M': 1, 'P': 1,
+    // Difficulty 2: Common starting letters
+    'D': 2, 'F': 2, 'G': 2, 'H': 2, 'L': 2, 'R': 2, 'T': 2,
+    // Difficulty 3: Moderately common
+    'E': 3, 'I': 3, 'J': 3, 'K': 3, 'N': 3, 'O': 3, 'W': 3,
+    // Difficulty 4: Less common
+    'U': 4, 'V': 4, 'Y': 4,
+    // Difficulty 5: Rare starting letters (X excluded from game)
+    'Q': 5, 'Z': 5,
+  };
+
   void _initializeLetters() {
     // Generate all 26 letters (A-Z) with random non-overlapping positions
     final letters = _generateLetterNodes();
@@ -48,7 +65,7 @@ class GameCubit extends Cubit<GameState> {
   void startGame() {
     _initializeLetters();
     emit(state.copyWith(
-      timeRemaining: 120, // Will be set when wheel lands
+      timeRemaining: 200, // Start with 200 seconds, carries over between rounds (-5s per round)
       score: 0,
       letterRound: 1,
       completedLetters: [],
@@ -77,14 +94,18 @@ class GameCubit extends Cubit<GameState> {
 
   /// Called when spinning wheel lands on a letter
   void onWheelLanded(String letter) {
+    // Audio and haptic feedback for wheel landing
+    AudioService.instance.play(GameSound.wheelLand);
+    HapticService.instance.heavy();
+
     final upperLetter = letter.toUpperCase();
 
     // Get 5 random categories that have words for this letter
     final categories = _get5RandomCategoriesForLetter(upperLetter);
 
-    // Calculate time for this round: 120 - 10 * (letterRound - 1)
-    // Round 1: 120s, Round 2: 110s, Round 3: 100s, etc. (min 10s)
-    final roundTime = (120 - 10 * (state.letterRound - 1)).clamp(10, 120);
+    // Time carries over from previous round (already set)
+    // Timer starts on first wheel land, continues for subsequent rounds
+    final isFirstRound = state.letterRound == 1;
 
     emit(state.copyWith(
       currentLetter: upperLetter,
@@ -92,13 +113,14 @@ class GameCubit extends Cubit<GameState> {
       categoryIndex: 0,
       category: categories.isNotEmpty ? categories[0] : 'ANIMALS',
       phase: GamePhase.categoryReveal,
-      timeRemaining: roundTime,
       isPlaying: true,
       clearLastAnswerCorrect: true,
     ));
 
-    // Start timer when wheel lands
-    _startTimer();
+    // Start timer only on first round (subsequent rounds timer continues)
+    if (isFirstRound) {
+      _startTimer();
+    }
   }
 
   /// Called when category jackpot animation completes
@@ -106,20 +128,33 @@ class GameCubit extends Cubit<GameState> {
     emit(state.copyWith(
       phase: GamePhase.playingRound,
       selectedLetterIds: [],
+      committedWord: '',
     ));
   }
 
   /// Get 5 random categories that have words for the letter
+  /// Categories are weighted by difficulty based on current round
   List<String> _get5RandomCategoriesForLetter(String letter) {
-    final validCategories = CategoryDictionary.categories.where((cat) {
-      return _dictionary.categoryHasWordsForLetter(cat, letter);
-    }).toList();
+    // Use weighted selection based on current round
+    final weightedCategories = CategoryService.instance.getNRandomCategoriesWeighted(
+      letter,
+      state.letterRound,
+      5,
+    );
 
-    if (validCategories.isEmpty) return ['ANIMALS', 'FOODS', 'COUNTRIES', 'SPORTS', 'CITIES'];
+    if (weightedCategories.isEmpty) {
+      // Fallback to unweighted selection
+      final validCategories = CategoryDictionary.categories.where((cat) {
+        return _dictionary.categoryHasWordsForLetter(cat, letter);
+      }).toList();
 
-    // Shuffle and take up to 5
-    validCategories.shuffle(_random);
-    return validCategories.take(5).toList();
+      if (validCategories.isEmpty) return ['ANIMALS', 'FOOD & DRINK', 'COUNTRIES', 'SPORTS', 'CITIES'];
+
+      validCategories.shuffle(_random);
+      return validCategories.take(5).toList();
+    }
+
+    return weightedCategories.map((c) => c.name.toUpperCase()).toList();
   }
 
   /// Get a random category that has words for the letter (fallback)
@@ -133,6 +168,7 @@ class GameCubit extends Cubit<GameState> {
   }
 
   /// Get remaining letters for the spinning wheel (A-Y, excluding X)
+  /// Letters are weighted by difficulty - easier letters appear more often early in the game
   List<String> getRemainingLetters() {
     final remaining = <String>[];
     for (var i = 0; i < 26; i++) {
@@ -144,6 +180,52 @@ class GameCubit extends Cubit<GameState> {
       }
     }
     return remaining;
+  }
+
+  /// Get weighted remaining letters for wheel spin
+  /// Earlier rounds favor easier letters, later rounds are more random
+  List<String> getWeightedRemainingLetters() {
+    final remaining = getRemainingLetters();
+    if (remaining.isEmpty) return remaining;
+
+    final weightedList = <String>[];
+    final currentRound = state.letterRound;
+
+    // Calculate difficulty threshold based on round
+    // Round 1-5: prefer difficulty 1-2
+    // Round 6-10: prefer difficulty 1-3
+    // Round 11-15: prefer difficulty 1-4
+    // Round 16+: all difficulties equal
+    final maxPreferredDifficulty = switch (currentRound) {
+      <= 5 => 2,
+      <= 10 => 3,
+      <= 15 => 4,
+      _ => 5,
+    };
+
+    for (final letter in remaining) {
+      final difficulty = _letterDifficulty[letter] ?? 3;
+
+      // Calculate weight: easier letters get more entries
+      // Weight = (maxPreferredDifficulty - difficulty + 1) clamped to 1-5
+      int weight;
+      if (difficulty <= maxPreferredDifficulty) {
+        // Preferred difficulty range: higher weight for easier
+        weight = (maxPreferredDifficulty - difficulty + 2).clamp(1, 5);
+      } else {
+        // Above preferred difficulty: minimal weight (still possible)
+        weight = 1;
+      }
+
+      // Add letter multiple times based on weight
+      for (var i = 0; i < weight; i++) {
+        weightedList.add(letter);
+      }
+    }
+
+    // Shuffle to randomize
+    weightedList.shuffle(_random);
+    return weightedList;
   }
 
   /// Generate all 26 letters using grid-based placement with jitter
@@ -219,6 +301,7 @@ class GameCubit extends Cubit<GameState> {
   static const double _outerHitRadius = 0.055;
 
   /// Start dragging from a position - check if it hits a letter
+  /// If there's an existing selection (e.g., after pressing x2), continue from it
   void startDrag(Offset relativePosition) {
     // Reset all tracking state
     _pendingLetterId = null;
@@ -226,20 +309,74 @@ class GameCubit extends Cubit<GameState> {
     _lastDragPosition = relativePosition;
     _lastDragTime = DateTime.now();
 
+    // Check if we already have a selection (e.g., user pressed x2 and wants to continue)
+    final hasExistingSelection = state.selectedLetterIds.isNotEmpty;
+
     // For starting, use inner radius (must be intentional)
     final hitNode = _findNodeAtPosition(relativePosition, _innerHitRadius);
-    if (hitNode != null) {
-      emit(state.copyWith(
-        isDragging: true,
-        selectedLetterIds: [hitNode.id],
-        currentDragPosition: relativePosition,
-      ));
+
+    if (hasExistingSelection) {
+      // Continue from existing selection
+      if (hitNode != null) {
+        final lastId = state.selectedLetterIds.last;
+        if (hitNode.id != lastId) {
+          // Hit a different letter - add to selection
+          final newSelection = [...state.selectedLetterIds, hitNode.id];
+          emit(state.copyWith(
+            isDragging: true,
+            selectedLetterIds: newSelection,
+            currentDragPosition: relativePosition,
+          ));
+        } else {
+          // Hit the same letter - just continue dragging
+          emit(state.copyWith(
+            isDragging: true,
+            currentDragPosition: relativePosition,
+          ));
+        }
+      } else {
+        // No hit - just start dragging, keep existing selection
+        emit(state.copyWith(
+          isDragging: true,
+          currentDragPosition: relativePosition,
+        ));
+      }
     } else {
-      // Start dragging even without hitting a letter (allows drag-through)
-      emit(state.copyWith(
-        isDragging: true,
-        currentDragPosition: relativePosition,
-      ));
+      // No existing selection - start fresh
+      if (hitNode != null) {
+        // Validate first letter in Alpha Quest mode
+        if (state.phase == GamePhase.playingRound && state.currentLetter != null) {
+          // First letter (after any committed word) should be valid prefix
+          final potentialWord = state.committedWord + hitNode.letter;
+          final isValidPath = _dictionary.isValidPrefix(
+            potentialWord,
+            state.category,
+            state.currentLetter!,
+          );
+
+          if (!isValidPath) {
+            // Invalid starting letter - start dragging without selection
+            emit(state.copyWith(
+              isDragging: true,
+              currentDragPosition: relativePosition,
+            ));
+            return;
+          }
+        }
+
+        // Valid starting letter
+        emit(state.copyWith(
+          isDragging: true,
+          selectedLetterIds: [hitNode.id],
+          currentDragPosition: relativePosition,
+        ));
+      } else {
+        // Start dragging even without hitting a letter (allows drag-through)
+        emit(state.copyWith(
+          isDragging: true,
+          currentDragPosition: relativePosition,
+        ));
+      }
     }
   }
 
@@ -333,10 +470,35 @@ class GameCubit extends Cubit<GameState> {
     emit(state.copyWith(currentDragPosition: relativePosition));
   }
 
-  /// Confirm selection of a letter
+  /// Confirm selection of a letter - only if it could lead to a valid word
   void _confirmLetterSelection(int letterId, Offset position) {
     _pendingLetterId = null;
     _pendingLetterEnteredAt = null;
+
+    // Only validate in Alpha Quest playing mode
+    if (state.phase == GamePhase.playingRound && state.currentLetter != null) {
+      // Build the potential new word with this letter
+      final newLetter = state.letters.firstWhere((l) => l.id == letterId).letter;
+      final potentialWord = state.committedWord + state.currentSelection + newLetter;
+
+      // Check if this prefix could lead to a valid word
+      final isValidPath = _dictionary.isValidPrefix(
+        potentialWord,
+        state.category,
+        state.currentLetter!,
+      );
+
+      if (!isValidPath) {
+        // Invalid path - reject the connection silently
+        // Just update drag position without adding letter
+        emit(state.copyWith(currentDragPosition: position));
+        return;
+      }
+    }
+
+    // Valid connection - add the letter
+    AudioService.instance.play(GameSound.letterSelect);
+    HapticService.instance.medium();
 
     final newSelection = [...state.selectedLetterIds, letterId];
     emit(state.copyWith(
@@ -386,7 +548,42 @@ class GameCubit extends Cubit<GameState> {
   }
 
   void clearSelection() {
-    emit(state.copyWith(selectedLetterIds: [], clearDragPosition: true));
+    emit(state.copyWith(
+      selectedLetterIds: [],
+      committedWord: '', // Also clear committed word
+      clearDragPosition: true,
+      spaceUsageCount: 0, // Reset bonus counts
+      repeatUsageCount: 0,
+    ));
+  }
+
+  /// Insert a space - commits current selection and allows fresh start
+  /// Awards bonus points for using multi-word answers
+  void insertSpace() {
+    if (state.selectedLetterIds.isEmpty) return;
+
+    // Commit current selection + space, then clear selection for fresh drag
+    final newCommitted = state.committedWord + state.currentSelection + ' ';
+    emit(state.copyWith(
+      committedWord: newCommitted,
+      selectedLetterIds: [], // Clear selection for fresh start
+      spaceUsageCount: state.spaceUsageCount + 1, // Track bonus usage
+    ));
+  }
+
+  /// Repeat the last letter (for double letters like SS in JURASSIC)
+  /// Awards bonus points for using x2 feature
+  void repeatLastLetter() {
+    if (state.selectedLetterIds.isEmpty) return;
+    final lastId = state.selectedLetterIds.last;
+    // Don't repeat spaces
+    if (lastId == GameState.spaceId) return;
+
+    final newSelection = [...state.selectedLetterIds, lastId];
+    emit(state.copyWith(
+      selectedLetterIds: newSelection,
+      repeatUsageCount: state.repeatUsageCount + 1, // Track bonus usage
+    ));
   }
 
   void submitWord() {
@@ -410,64 +607,103 @@ class GameCubit extends Cubit<GameState> {
     } else {
       // Non-Alpha Quest mode (original behavior)
       final newWords = [...state.completedWords, word];
-      final wordScore = state.selectedLetters.fold<int>(0, (sum, l) => sum + l.points);
+      // Filter out nulls (spaces) and sum points
+      final wordScore = state.selectedLetters
+          .whereType<LetterNode>()
+          .fold<int>(0, (sum, l) => sum + l.points);
       emit(state.copyWith(
         completedWords: newWords,
         selectedLetterIds: [],
+        committedWord: '',
         score: state.score + wordScore,
       ));
     }
   }
 
   /// Calculate score for a word (Scrabble-style + bonuses)
+  /// Includes bonus points for using space (multi-word) and x2 (double letter) features
   int _calculateWordScore(String word) {
     int score = 0;
     final upperWord = word.toUpperCase();
 
-    // Sum letter points
+    // Sum letter points (spaces don't count)
     for (final char in upperWord.split('')) {
+      if (char == ' ') continue; // Skip spaces
       score += _letterPoints[char] ?? 1;
     }
 
+    // Count actual letters (excluding spaces) for length bonus
+    final letterCount = upperWord.replaceAll(' ', '').length;
+
     // Bonus for longer words
-    if (upperWord.length >= 7) {
+    if (letterCount >= 7) {
       score += 10; // Long word bonus
-    } else if (upperWord.length >= 5) {
+    } else if (letterCount >= 5) {
       score += 5; // Medium word bonus
     }
+
+    // Bonus for using space button (multi-word answers like "JURASSIC PARK")
+    // +5 points per space used
+    score += state.spaceUsageCount * 5;
+
+    // Bonus for using x2 button (double letters like SS in JURASSIC)
+    // +3 points per x2 used
+    score += state.repeatUsageCount * 3;
 
     return score;
   }
 
   /// Handle correct answer in Alpha Quest
   void _handleCorrectAnswer(String word) {
+    // Audio and haptic feedback for correct answer
+    AudioService.instance.play(GameSound.wordCorrect);
+    HapticService.instance.success();
+
     final wordScore = _calculateWordScore(word);
     final newScore = state.score + wordScore;
     final newWords = [...state.completedWords, word];
     final nextCategoryIndex = state.categoryIndex + 1;
 
-    // Check if we completed all 5 categories for this letter
-    if (nextCategoryIndex >= GameState.categoriesPerLetter) {
-      // Letter complete! Move to next letter
-      _completeLetterRound(newScore, newWords);
-    } else {
-      // Move to next category for same letter
-      final nextCategory = state.currentCategories[nextCategoryIndex];
-      emit(state.copyWith(
-        score: newScore,
-        completedWords: newWords,
-        categoryIndex: nextCategoryIndex,
-        category: nextCategory,
-        selectedLetterIds: [],
-        lastAnswerCorrect: true,
-        phase: GamePhase.categoryReveal, // Show jackpot for next category
-      ));
-    }
+    // First emit celebration state - keep letters visible for animation
+    emit(state.copyWith(
+      score: newScore,
+      lastAnswerCorrect: true,
+    ));
+
+    // Delay transition to allow celebration animation to play
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (isClosed) return; // Guard against cubit being closed
+
+      // Check if we completed all 5 categories for this letter
+      if (nextCategoryIndex >= GameState.categoriesPerLetter) {
+        // Letter complete! Move to next letter
+        // First clear lastAnswerCorrect so the round celebration can re-trigger it
+        emit(state.copyWith(clearLastAnswerCorrect: true));
+        _completeLetterRound(newScore, newWords);
+      } else {
+        // Move to next category for same letter
+        final nextCategory = state.currentCategories[nextCategoryIndex];
+        emit(state.copyWith(
+          completedWords: newWords,
+          categoryIndex: nextCategoryIndex,
+          category: nextCategory,
+          selectedLetterIds: [],
+          committedWord: '',
+          clearLastAnswerCorrect: true,
+          phase: GamePhase.categoryReveal, // Show jackpot for next category
+          spaceUsageCount: 0, // Reset bonus counts
+          repeatUsageCount: 0,
+        ));
+      }
+    });
   }
 
   /// Complete a letter round and move to next letter
+  /// Time carries over from previous round minus 10 second penalty
   void _completeLetterRound(int newScore, List<String> newWords) {
-    _timer?.cancel(); // Stop timer for this round
+    // Deduct 10 seconds as penalty for moving to next round
+    // Time carries over: if player had 180s remaining, next round starts at 170s
+    final newTime = (state.timeRemaining - 10).clamp(0, 999);
 
     final newCompletedLetters = [...state.completedLetters, state.currentLetter!];
 
@@ -477,31 +713,64 @@ class GameCubit extends Cubit<GameState> {
       return;
     }
 
-    // Move to next letter round
+    // Check if time ran out after deduction
+    if (newTime <= 0) {
+      _endGame(isWinner: false, finalScore: newScore);
+      return;
+    }
+
+    // Play round complete celebration
+    AudioService.instance.play(GameSound.roundComplete);
+    HapticService.instance.success();
+
+    // First emit celebration state - keep letters visible, update time immediately
     emit(state.copyWith(
       score: newScore,
-      completedWords: newWords,
       completedLetters: newCompletedLetters,
-      letterRound: state.letterRound + 1,
-      selectedLetterIds: [],
+      timeRemaining: newTime, // Update time immediately so player sees it
       lastAnswerCorrect: true,
-      phase: GamePhase.spinningWheel,
-      clearCurrentLetter: true,
-      currentCategories: [],
-      categoryIndex: 0,
-      isPlaying: false, // Timer stops until next wheel spin
     ));
+
+    // Delay before transitioning to wheel to show celebration
+    Future.delayed(const Duration(milliseconds: 1200), () {
+      if (isClosed) return;
+
+      // Move to next letter round
+      emit(state.copyWith(
+        completedWords: newWords,
+        letterRound: state.letterRound + 1,
+        selectedLetterIds: [],
+        committedWord: '',
+        clearLastAnswerCorrect: true,
+        phase: GamePhase.spinningWheel,
+        clearCurrentLetter: true,
+        currentCategories: [],
+        categoryIndex: 0,
+        isPlaying: true, // Timer keeps running during wheel spin
+        spaceUsageCount: 0, // Reset bonus counts
+        repeatUsageCount: 0,
+      ));
+    });
   }
 
   /// Handle wrong answer - deduct time, keep same category
+  /// Preserves banked words (committedWord) so only the current selection is lost
   void _handleWrongAnswer() {
+    // Audio and haptic feedback for wrong answer
+    AudioService.instance.play(GameSound.wordWrong);
+    HapticService.instance.error();
+
     // Deduct time penalty for wrong answer
     final newTime = (state.timeRemaining - 5).clamp(0, 999);
 
+    // Only clear current selection, keep banked words (committedWord) safe
     emit(state.copyWith(
       timeRemaining: newTime,
-      selectedLetterIds: [],
+      selectedLetterIds: [], // Clear current drag selection
+      // Note: committedWord is preserved - banked words are safe!
       lastAnswerCorrect: false,
+      // Don't reset spaceUsageCount - banked spaces are still valid
+      repeatUsageCount: 0, // Only reset repeat count for current selection
     ));
 
     if (newTime <= 0) {
@@ -512,12 +781,38 @@ class GameCubit extends Cubit<GameState> {
   /// End the game
   void _endGame({required bool isWinner, int? finalScore}) {
     _timer?.cancel();
+
+    final score = finalScore ?? state.score;
+
+    // Audio and haptic feedback for game end
+    if (isWinner) {
+      AudioService.instance.play(GameSound.gameWin);
+      HapticService.instance.success();
+    } else {
+      AudioService.instance.play(GameSound.gameLose);
+      HapticService.instance.warning();
+    }
+
+    // Save game session to local storage
+    _saveGameSession(score, isWinner);
+
     emit(state.copyWith(
       isPlaying: false,
       phase: GamePhase.gameOver,
       isWinner: isWinner,
-      score: finalScore ?? state.score,
+      score: score,
     ));
+  }
+
+  /// Save the completed game session to local storage
+  Future<void> _saveGameSession(int score, bool isWinner) async {
+    final session = GameSession.create(
+      score: score,
+      lettersCompleted: state.completedLetters.length,
+      wordsCompleted: state.completedWords.length,
+      isWinner: isWinner,
+    );
+    await StorageService.instance.saveGameSession(session);
   }
 
   /// Reset the game to initial state
@@ -527,13 +822,14 @@ class GameCubit extends Cubit<GameState> {
     emit(state.copyWith(
       phase: GamePhase.notStarted,
       score: 0,
-      timeRemaining: 120,
+      timeRemaining: 200, // Reset to starting time
       completedLetters: [],
       completedWords: [],
       letterRound: 1,
       isWinner: false,
       isPlaying: false,
       selectedLetterIds: [],
+      committedWord: '',
       clearCurrentLetter: true,
       category: '',
       currentCategories: [],

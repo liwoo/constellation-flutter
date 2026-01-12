@@ -1,0 +1,32 @@
+{
+  "id": 22,
+  "name": "Mythical Creatures",
+  "words": {
+    "A": ["ABOMINABLE SNOWMAN", "ARACHNE"],
+    "B": ["BANSHEE", "BASILISK", "BIGFOOT", "BROWNIE"],
+    "C": ["CENTAUR", "CERBERUS", "CHANGELING", "CHARYBDIS", "CHIMERA", "CHUPACABRA", "CYCLOPS"],
+    "D": ["DEMON", "DJINN", "DRAGON", "DRUID", "DRYAD"],
+    "E": ["ELF", "ENCHANTRESS"],
+    "F": ["FAIRY", "FAUN", "FENRIR", "FIREBIRD"],
+    "G": ["GENIE", "GHOST", "GHOUL", "GIANT", "GNOME", "GOBLIN", "GOLEM", "GORGON", "GREMLIN", "GRIFFIN", "GRYPHON"],
+    "H": ["HARPY", "HELLHOUND", "HOBBIT", "HOBGOBLIN", "HYDRA", "HIPPOGRIFF"],
+    "I": ["IMP"],
+    "J": ["JACKALOPE"],
+    "K": ["KELPIE", "KRAKEN"],
+    "L": ["LEPRECHAUN", "LEVIATHAN", "LOCH NESS MONSTER"],
+    "M": ["MANTICORE", "MEDUSA", "MERMAID", "MERMAN", "MINOTAUR", "MOTHMAN", "MUMMY"],
+    "N": ["NAGA", "NESSIE", "NYMPH"],
+    "O": ["OGRE", "ORC"],
+    "P": ["PEGASUS", "PHOENIX", "PIXIE", "POLTERGEIST"],
+    "Q": ["QUETZALCOATL"],
+    "R": ["ROC"],
+    "S": ["SASQUATCH", "SATYR", "SCYLLA", "SEA MONSTER", "SEA SERPENT", "SELKIE", "SHADE", "SHAPESHIFTER", "SIREN", "SKELETON", "SLEIPNIR", "SPHINX", "SPIRIT", "SPRITE", "SUCCUBUS", "SYLPH"],
+    "T": ["THUNDERBIRD", "TITAN", "TROLL"],
+    "U": ["UNDINE", "UNICORN"],
+    "V": ["VALKYRIE", "VAMPIRE"],
+    "W": ["WARLOCK", "WENDIGO", "WEREWOLF", "WIGHT", "WILL O WISP", "WITCH", "WIZARD", "WRAITH", "WYVERN"],
+    "X": ["XIEZHI", "XING TIAN"],
+    "Y": ["YETI"],
+    "Z": ["ZOMBIE"]
+  }
+}

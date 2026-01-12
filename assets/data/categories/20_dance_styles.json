@@ -1,0 +1,32 @@
+{
+  "id": 20,
+  "name": "Dance Styles",
+  "words": {
+    "A": ["AFRICAN DANCE", "ARGENTINE TANGO"],
+    "B": ["BACHATA", "BALLET", "BALLROOM", "BELLY DANCE", "BHANGRA", "BOLERO", "BOLLYWOOD", "BOOGIE", "BOSSA NOVA", "BREAKDANCE", "BURLESQUE"],
+    "C": ["CABARET", "CALYPSO", "CAN CAN", "CHA CHA", "CHARLESTON", "CLOGGING", "CONTEMPORARY", "CONTRA DANCE", "COUNTRY LINE DANCE", "COUNTRY WESTERN", "CUMBIA"],
+    "D": ["DISCO"],
+    "E": ["ELECTRIC SLIDE"],
+    "F": ["FLAMENCO", "FOLK DANCE", "FOXTROT", "FREESTYLE", "FUNKY CHICKEN"],
+    "G": ["GO GO"],
+    "H": ["HIGHLAND DANCE", "HIP HOP", "HOEDOWN", "HULA"],
+    "I": ["IRISH JIG", "IRISH STEP DANCE"],
+    "J": ["JAZZ", "JITTERBUG", "JIVE"],
+    "K": ["KRUMPING"],
+    "L": ["LAMBADA", "LINE DANCE", "LINDY HOP", "LOCKING"],
+    "M": ["MAMBO", "MAYPOLE DANCE", "MERENGUE", "MINUET", "MODERN DANCE", "MOONWALK", "MORRIS DANCE"],
+    "N": ["NOVELTY DANCE"],
+    "O": ["ONE STEP"],
+    "P": ["PASO DOBLE", "POLKA", "POPPING"],
+    "Q": ["QUICKSTEP"],
+    "R": ["REGGAETON", "ROBOT", "ROCK AND ROLL", "RUMBA"],
+    "S": ["SALSA", "SAMBA", "SHUFFLE", "SLOW DANCE", "SQUARE DANCE", "STEP DANCE", "STOMP", "STREET DANCE", "SWING"],
+    "T": ["TANGO", "TAP DANCE", "TARANTELLA", "TWIST", "TWO STEP"],
+    "U": ["URBAN DANCE"],
+    "V": ["VIENNESE WALTZ", "VOGUING"],
+    "W": ["WALTZ", "WATUSI", "WEST COAST SWING"],
+    "X": ["XOTE"],
+    "Y": ["YAKUT DANCE"],
+    "Z": ["ZUMBA", "ZOUK"]
+  }
+}

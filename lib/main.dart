@@ -1,8 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:constellation_app/app/router.dart';
+import 'package:constellation_app/shared/services/services.dart';
 import 'package:constellation_app/shared/theme/theme.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize services
+  await AudioService.instance.init();
+  await AudioService.instance.preloadSounds();
+  await HapticService.instance.init();
+  await CategoryService.instance.init();
+
   runApp(const ConstellationApp());
 }
 
