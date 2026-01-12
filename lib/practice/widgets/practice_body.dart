@@ -32,6 +32,10 @@ class PracticeBody extends StatelessWidget {
                 child: _buildPhaseContent(context, state),
               ),
 
+              // Tutorial modal overlay
+              if (state.showTutorial != null)
+                _buildTutorialOverlay(context, state.showTutorial!),
+
               // Completion overlay
               if (state.phase == PracticePhase.completed)
                 _buildCompletionOverlay(context, state),
@@ -347,6 +351,185 @@ class PracticeBody extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildTutorialOverlay(BuildContext context, TutorialType tutorial) {
+    final isDoubleLetters = tutorial == TutorialType.doubleLetters;
+
+    return Container(
+      color: AppColors.black.withAlpha(220),
+      child: Center(
+        child: Container(
+          margin: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(28),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                AppColors.primaryPurple.withAlpha(250),
+                AppColors.primaryDarkPurple.withAlpha(250),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: AppColors.accentCyan,
+              width: 3,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.accentCyan.withAlpha(100),
+                blurRadius: 30,
+                spreadRadius: 5,
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Icon
+              Container(
+                width: 70,
+                height: 70,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: const LinearGradient(
+                    colors: [AppColors.accentCyan, AppColors.accentPurple],
+                  ),
+                ),
+                child: Icon(
+                  isDoubleLetters ? Icons.repeat : Icons.space_bar,
+                  color: Colors.white,
+                  size: 36,
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Title
+              Text(
+                isDoubleLetters ? 'DOUBLE LETTERS' : 'MULTI-WORD',
+                style: GoogleFonts.orbitron(
+                  color: AppColors.accentCyan,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 2,
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Explanation
+              Text(
+                isDoubleLetters
+                    ? 'This word has double letters\n(like SS in MISSISSIPPI)'
+                    : 'This is a multi-word phrase\n(like ICE CREAM)',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.exo2(
+                  color: Colors.white.withAlpha(220),
+                  fontSize: 15,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // How to spell it
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.black.withAlpha(100),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      'HOW TO SPELL IT:',
+                      style: GoogleFonts.exo2(
+                        color: AppColors.accentGold,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // Button illustration
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [AppColors.accentGold, AppColors.accentOrange],
+                            ),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            isDoubleLetters ? 'x2' : '\u2423',
+                            style: GoogleFonts.orbitron(
+                              color: AppColors.black,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Flexible(
+                          child: Text(
+                            isDoubleLetters
+                                ? 'Tap x2 to repeat\nthe last letter'
+                                : 'Tap space to add\na space between words',
+                            style: GoogleFonts.exo2(
+                              color: Colors.white.withAlpha(200),
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // Got it button
+              GestureDetector(
+                onTap: () => context.read<PracticeCubit>().dismissTutorial(),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 40,
+                    vertical: 14,
+                  ),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [AppColors.accentCyan, AppColors.accentPurple],
+                    ),
+                    borderRadius: BorderRadius.circular(30),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.accentCyan.withAlpha(100),
+                        blurRadius: 15,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    'GOT IT!',
+                    style: GoogleFonts.orbitron(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

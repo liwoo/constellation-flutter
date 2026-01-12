@@ -19,6 +19,25 @@ class PracticeWord {
 
   /// Check if this is a multi-word phrase
   bool get isMultiWord => word.contains(' ');
+
+  /// Check if this word has double letters (e.g., MISSISSIPPI has SS, PP)
+  bool get hasDoubleLetters {
+    final upperWord = word.toUpperCase().replaceAll(' ', '');
+    for (int i = 0; i < upperWord.length - 1; i++) {
+      if (upperWord[i] == upperWord[i + 1]) {
+        return true;
+      }
+    }
+    return false;
+  }
+}
+
+/// Tutorial types for practice mode
+enum TutorialType {
+  /// How to spell words with spaces (multi-word)
+  spacedWords,
+  /// How to spell words with double letters
+  doubleLetters,
 }
 
 /// Practice phase
@@ -47,6 +66,9 @@ class PracticeState extends Equatable {
     this.isDragging = false,
     this.currentDragPosition,
     this.showSuccess = false,
+    this.showTutorial,
+    this.hasSeenDoubleLettersTutorial = false,
+    this.hasSeenSpacedWordsTutorial = false,
   });
 
   /// Special ID for space character in selectedLetterIds
@@ -65,6 +87,9 @@ class PracticeState extends Equatable {
   final bool isDragging;
   final Offset? currentDragPosition;
   final bool showSuccess;
+  final TutorialType? showTutorial; // Tutorial to show, null if none
+  final bool hasSeenDoubleLettersTutorial;
+  final bool hasSeenSpacedWordsTutorial;
 
   /// Get current target word
   PracticeWord? get currentWord =>
@@ -111,6 +136,9 @@ class PracticeState extends Equatable {
         isDragging,
         currentDragPosition,
         showSuccess,
+        showTutorial,
+        hasSeenDoubleLettersTutorial,
+        hasSeenSpacedWordsTutorial,
       ];
 
   PracticeState copyWith({
@@ -125,6 +153,10 @@ class PracticeState extends Equatable {
     Offset? currentDragPosition,
     bool clearDragPosition = false,
     bool? showSuccess,
+    TutorialType? showTutorial,
+    bool clearTutorial = false,
+    bool? hasSeenDoubleLettersTutorial,
+    bool? hasSeenSpacedWordsTutorial,
   }) {
     return PracticeState(
       letters: letters ?? this.letters,
@@ -138,6 +170,11 @@ class PracticeState extends Equatable {
       currentDragPosition:
           clearDragPosition ? null : (currentDragPosition ?? this.currentDragPosition),
       showSuccess: showSuccess ?? this.showSuccess,
+      showTutorial: clearTutorial ? null : (showTutorial ?? this.showTutorial),
+      hasSeenDoubleLettersTutorial:
+          hasSeenDoubleLettersTutorial ?? this.hasSeenDoubleLettersTutorial,
+      hasSeenSpacedWordsTutorial:
+          hasSeenSpacedWordsTutorial ?? this.hasSeenSpacedWordsTutorial,
     );
   }
 }

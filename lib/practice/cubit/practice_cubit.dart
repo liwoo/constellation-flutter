@@ -74,6 +74,17 @@ class PracticeCubit extends Cubit<PracticeState> {
     // Select 10 random words, progressively harder
     final sessionWords = _selectSessionWords();
 
+    // Check if first word needs a tutorial
+    TutorialType? tutorial;
+    if (sessionWords.isNotEmpty) {
+      final firstWord = sessionWords[0];
+      if (firstWord.isMultiWord && !state.hasSeenSpacedWordsTutorial) {
+        tutorial = TutorialType.spacedWords;
+      } else if (firstWord.hasDoubleLetters && !state.hasSeenDoubleLettersTutorial) {
+        tutorial = TutorialType.doubleLetters;
+      }
+    }
+
     emit(state.copyWith(
       phase: PracticePhase.playing,
       sessionWords: sessionWords,
@@ -82,7 +93,27 @@ class PracticeCubit extends Cubit<PracticeState> {
       selectedLetterIds: [],
       committedWord: '',
       showSuccess: false,
+      showTutorial: tutorial,
+      clearTutorial: tutorial == null,
     ));
+  }
+
+  /// Dismiss the tutorial modal
+  void dismissTutorial() {
+    // Mark the tutorial type as seen
+    if (state.showTutorial == TutorialType.spacedWords) {
+      emit(state.copyWith(
+        clearTutorial: true,
+        hasSeenSpacedWordsTutorial: true,
+      ));
+    } else if (state.showTutorial == TutorialType.doubleLetters) {
+      emit(state.copyWith(
+        clearTutorial: true,
+        hasSeenDoubleLettersTutorial: true,
+      ));
+    } else {
+      emit(state.copyWith(clearTutorial: true));
+    }
   }
 
   /// Select 10 words for the session, progressively harder
@@ -387,16 +418,30 @@ class PracticeCubit extends Cubit<PracticeState> {
         phase: PracticePhase.completed,
         completedCount: newCompletedCount,
         showSuccess: false,
+        clearTutorial: true,
       ));
     } else {
       // Next word
       _initializeLetters();
+
+      // Check if next word needs a tutorial
+      final nextWord = state.sessionWords[newIndex];
+      TutorialType? tutorial;
+
+      if (nextWord.isMultiWord && !state.hasSeenSpacedWordsTutorial) {
+        tutorial = TutorialType.spacedWords;
+      } else if (nextWord.hasDoubleLetters && !state.hasSeenDoubleLettersTutorial) {
+        tutorial = TutorialType.doubleLetters;
+      }
+
       emit(state.copyWith(
         currentWordIndex: newIndex,
         completedCount: newCompletedCount,
         selectedLetterIds: [],
         committedWord: '',
         showSuccess: false,
+        showTutorial: tutorial,
+        clearTutorial: tutorial == null,
       ));
     }
   }

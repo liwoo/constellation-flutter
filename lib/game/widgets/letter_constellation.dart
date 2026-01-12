@@ -13,6 +13,7 @@ class LetterConstellation extends StatelessWidget {
     required this.onDragEnd,
     this.currentDragPosition,
     this.isDragging = false,
+    this.startingLetter,
   });
 
   final List<LetterNode> letters;
@@ -22,6 +23,7 @@ class LetterConstellation extends StatelessWidget {
   final VoidCallback onDragEnd;
   final Offset? currentDragPosition;
   final bool isDragging;
+  final String? startingLetter; // Letter to highlight as starting point
 
   /// Calculate dynamic bubble size based on container dimensions
   /// Fits 26 letters with proper spacing
@@ -93,6 +95,8 @@ class LetterConstellation extends StatelessWidget {
                 final x = letter.position.dx * constraints.maxWidth;
                 final y = letter.position.dy * constraints.maxHeight;
                 final isSelected = selectedLetterIds.contains(letter.id);
+                final isStarting = startingLetter != null &&
+                    letter.letter.toUpperCase() == startingLetter!.toUpperCase();
 
                 return Positioned(
                   left: x - (bubbleSize / 2),
@@ -102,6 +106,7 @@ class LetterConstellation extends StatelessWidget {
                       letter: letter.letter,
                       points: letter.points,
                       isSelected: isSelected,
+                      isStartingLetter: isStarting,
                       size: bubbleSize,
                     ),
                   ),

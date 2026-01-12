@@ -14,6 +14,8 @@ class AppColors {
   static const Color accentPink = Color(0xFFE91E63); // Pink 500
   static const Color accentOrange = Color(0xFFFF9800); // Orange 500
   static const Color accentYellow = Color(0xFFFFEB3B); // Yellow 500
+  static const Color accentCyan = Color(0xFF00E5FF); // Cyan A400
+  static const Color accentPurple = Color(0xFF7C4DFF); // Deep Purple A200
 
   // Neutral colors
   static const Color white = Color(0xFFFFFFFF);

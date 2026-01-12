@@ -10,6 +10,7 @@ class LetterBubble extends StatelessWidget {
     required this.letter,
     required this.points,
     this.isSelected = false,
+    this.isStartingLetter = false,
     this.onTap,
     this.size = AppConstants.letterBubbleSize,
   });
@@ -17,6 +18,7 @@ class LetterBubble extends StatelessWidget {
   final String letter;
   final int points;
   final bool isSelected;
+  final bool isStartingLetter; // Highlight as the letter to start with
   final VoidCallback? onTap;
   final double size;
 
@@ -29,6 +31,7 @@ class LetterBubble extends StatelessWidget {
         children: [
           // Outer glow effect (star-like)
           if (isSelected) _buildSelectedGlow(),
+          if (isStartingLetter && !isSelected) _buildStartingLetterGlow(),
           _buildStarGlow(),
 
           // Main letter bubble
@@ -41,8 +44,10 @@ class LetterBubble extends StatelessWidget {
             child: BadgeWidget(
               text: points.toString(),
               size: AppConstants.badgeSizeSmall,
-              backgroundColor: AppColors.accentGold,
-              textColor: AppColors.black,
+              backgroundColor: isStartingLetter
+                  ? AppColors.accentCyan
+                  : AppColors.accentGold,
+              textColor: isStartingLetter ? Colors.white : AppColors.black,
             ),
           ),
         ],
@@ -64,6 +69,34 @@ class LetterBubble extends StatelessWidget {
               color: AppColors.accentGold.withAlpha(150),
               blurRadius: 20,
               spreadRadius: 2,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStartingLetterGlow() {
+    return Positioned(
+      left: -10,
+      top: -10,
+      right: -10,
+      bottom: -10,
+      child: Container(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          boxShadow: [
+            // Bright cyan inner glow
+            BoxShadow(
+              color: AppColors.accentCyan.withAlpha(200),
+              blurRadius: 15,
+              spreadRadius: 3,
+            ),
+            // Outer glow
+            BoxShadow(
+              color: AppColors.accentCyan.withAlpha(100),
+              blurRadius: 25,
+              spreadRadius: 5,
             ),
           ],
         ),
@@ -100,18 +133,21 @@ class LetterBubble extends StatelessWidget {
   }
 
   Widget _buildBubble() {
+    // Determine border based on state
+    Border? border;
+    if (isSelected) {
+      border = Border.all(color: AppColors.accentGold, width: 3);
+    } else if (isStartingLetter) {
+      border = Border.all(color: AppColors.accentCyan, width: 3);
+    }
+
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        // Selection ring
-        border: isSelected
-            ? Border.all(
-                color: AppColors.accentGold,
-                width: 3,
-              )
-            : null,
+        // Selection/starting ring
+        border: border,
         // Drop shadow
         boxShadow: [
           BoxShadow(

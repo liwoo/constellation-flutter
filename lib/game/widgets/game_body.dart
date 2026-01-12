@@ -494,6 +494,7 @@ class _GameBodyState extends State<GameBody> with SingleTickerProviderStateMixin
               selectedLetterIds: state.selectedLetterIds,
               currentDragPosition: state.currentDragPosition,
               isDragging: state.isDragging,
+              startingLetter: state.currentLetter,
               onDragStart: (pos) {
                 context.read<GameCubit>().startDrag(pos);
               },
@@ -601,41 +602,70 @@ class _GameBodyState extends State<GameBody> with SingleTickerProviderStateMixin
   }
 
   Widget _buildSmallLetterBadge(String letter) {
-    return Container(
-      width: 40,
-      height: 40,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppColors.accentGold,
-            AppColors.accentOrange,
-          ],
-        ),
-        border: Border.all(
-          color: Colors.white,
-          width: 2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.accentGold.withAlpha(100),
-            blurRadius: 8,
-            spreadRadius: 1,
-          ),
-        ],
-      ),
-      child: Center(
-        child: Text(
-          letter,
-          style: GoogleFonts.orbitron(
-            color: AppColors.black,
-            fontSize: 20,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // "START" label
+        Text(
+          'START',
+          style: GoogleFonts.exo2(
+            color: AppColors.accentCyan,
+            fontSize: 9,
             fontWeight: FontWeight.bold,
+            letterSpacing: 1,
           ),
         ),
-      ),
+        const SizedBox(height: 2),
+        // Larger, more prominent badge with cyan accent
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                AppColors.accentCyan,
+                AppColors.accentPurple,
+              ],
+            ),
+            border: Border.all(
+              color: Colors.white,
+              width: 3,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.accentCyan.withAlpha(180),
+                blurRadius: 12,
+                spreadRadius: 3,
+              ),
+              BoxShadow(
+                color: AppColors.accentCyan.withAlpha(100),
+                blurRadius: 20,
+                spreadRadius: 5,
+              ),
+            ],
+          ),
+          child: Center(
+            child: Text(
+              letter,
+              style: GoogleFonts.orbitron(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                shadows: [
+                  Shadow(
+                    color: AppColors.black.withAlpha(150),
+                    offset: const Offset(1, 1),
+                    blurRadius: 2,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

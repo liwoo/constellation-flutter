@@ -223,6 +223,7 @@ class CelebrationStatsPanel extends StatelessWidget {
 }
 
 /// Special counter for next round that shows the time bonus animation
+/// Formula: (timeRemaining * 2) + pointsEarned
 class _NextRoundCounter extends StatefulWidget {
   const _NextRoundCounter({
     required this.timeRemaining,
@@ -248,10 +249,12 @@ class _NextRoundCounterState extends State<_NextRoundCounter>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
+      duration: const Duration(milliseconds: 1500),
     );
 
-    final endTime = widget.timeRemaining + widget.pointsEarned;
+    // New formula: double remaining time + points earned
+    final doubledTime = widget.timeRemaining * 2;
+    final endTime = doubledTime + widget.pointsEarned;
     _timeAnimation = Tween<double>(
       begin: widget.timeRemaining.toDouble(),
       end: endTime.toDouble(),
@@ -327,7 +330,7 @@ class _NextRoundCounterState extends State<_NextRoundCounter>
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  if (_showBonus && widget.pointsEarned > 0) ...[
+                  if (_showBonus) ...[
                     const SizedBox(width: 8),
                     AnimatedOpacity(
                       opacity: _controller.isCompleted ? 1.0 : 0.5,
@@ -342,7 +345,7 @@ class _NextRoundCounterState extends State<_NextRoundCounter>
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          '+${widget.pointsEarned}',
+                          'x2 +${widget.pointsEarned}',
                           style: GoogleFonts.orbitron(
                             color: AppColors.accentGold,
                             fontSize: 12,
