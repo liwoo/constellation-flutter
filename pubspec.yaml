@@ -68,6 +68,9 @@ dev_dependencies:
   # Splash Screen
   flutter_native_splash: ^2.4.1
 
+  # App Icon Generator
+  flutter_launcher_icons: ^0.14.2
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
@@ -121,5 +124,23 @@ flutter_native_splash:
   # Keep it minimal - just background color
   android_12:
     color: "#ffffff"
+
+# Flutter Launcher Icons Configuration
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/logos/app_icon.png"
+  remove_alpha_ios: true
+  min_sdk_android: 21 # android min sdk min:16, default 21
+  web:
+    generate: true
+    image_path: "assets/logos/app_icon.png"
+  windows:
+    generate: true
+    image_path: "assets/logos/app_icon.png"
+    icon_size: 48 # min:48, max:256, default: 48
+  macos:
+    generate: true
+    image_path: "assets/logos/app_icon.png"
 
 
