@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:constellation_app/shared/widgets/widgets.dart';
+import 'package:constellation_app/shared/theme/theme.dart';
 import 'package:constellation_app/game/cubit/game_cubit.dart';
 import 'package:constellation_app/game/widgets/connection_painter.dart';
 
@@ -14,7 +15,8 @@ class LetterConstellation extends StatelessWidget {
     this.currentDragPosition,
     this.isDragging = false,
     this.startingLetter,
-    this.hintWord,
+    this.hintLetterIds = const [],
+    this.hintAnimationIndex = 0,
   });
 
   final List<LetterNode> letters;
@@ -25,13 +27,33 @@ class LetterConstellation extends StatelessWidget {
   final Offset? currentDragPosition;
   final bool isDragging;
   final String? startingLetter; // Letter to highlight as starting point
-  final String? hintWord; // Word to animate as hint
+  final List<int> hintLetterIds; // Letter node IDs in order for hint animation
+  final int hintAnimationIndex; // Current position in the hint animation
 
-  /// Get the set of letters that are part of the hint word
-  Set<String> get _hintLetters {
-    if (hintWord == null) return {};
-    // Get unique letters from the hint word (ignoring spaces)
-    return hintWord!.toUpperCase().replaceAll(' ', '').split('').toSet();
+  /// Check if a letter should be highlighted as hint (already revealed in sequence)
+  bool _isHintLetter(int letterId) {
+    if (hintLetterIds.isEmpty) return false;
+    // Only highlight letters up to the current animation index
+    final visibleHintIds = hintLetterIds.take(hintAnimationIndex).toSet();
+    return visibleHintIds.contains(letterId);
+  }
+
+  /// Find the letter node nearest to a position (within hit radius)
+  LetterNode? _findNearestLetter(Offset relativePosition) {
+    const hitRadius = 0.06; // Radius to detect nearby letter
+    LetterNode? nearest;
+    double minDistance = hitRadius;
+
+    for (final node in letters) {
+      final dx = (node.position.dx - relativePosition.dx).abs();
+      final dy = (node.position.dy - relativePosition.dy).abs();
+      final distance = (dx * dx + dy * dy);
+      if (distance < minDistance * minDistance) {
+        minDistance = distance;
+        nearest = node;
+      }
+    }
+    return nearest;
   }
 
   /// Calculate dynamic bubble size based on container dimensions
@@ -106,7 +128,7 @@ class LetterConstellation extends StatelessWidget {
                 final isSelected = selectedLetterIds.contains(letter.id);
                 final isStarting = startingLetter != null &&
                     letter.letter.toUpperCase() == startingLetter!.toUpperCase();
-                final isHint = _hintLetters.contains(letter.letter.toUpperCase());
+                final isHint = _isHintLetter(letter.id);
 
                 return Positioned(
                   left: x - (bubbleSize / 2),
@@ -123,10 +145,88 @@ class LetterConstellation extends StatelessWidget {
                   ),
                 );
               }),
+
+              // Floating letter indicator (shows letter near touch point)
+              if (isDragging && currentDragPosition != null)
+                Builder(
+                  builder: (context) {
+                    final nearestLetter = _findNearestLetter(currentDragPosition!);
+                    if (nearestLetter == null) return const SizedBox.shrink();
+
+                    // Position offset from touch point (above and slightly left)
+                    final touchX = currentDragPosition!.dx * containerSize.width;
+                    final touchY = currentDragPosition!.dy * containerSize.height;
+
+                    // Offset: 60px above the touch point
+                    const offsetY = -70.0;
+                    const indicatorSize = 52.0;
+
+                    return Positioned(
+                      left: touchX - (indicatorSize / 2),
+                      top: touchY + offsetY,
+                      child: IgnorePointer(
+                        child: _FloatingLetterIndicator(
+                          letter: nearestLetter.letter,
+                          size: indicatorSize,
+                        ),
+                      ),
+                    );
+                  },
+                ),
             ],
           ),
         );
       },
+    );
+  }
+}
+
+/// Floating letter indicator that appears above the touch point
+/// Similar to iOS keyboard letter preview
+class _FloatingLetterIndicator extends StatelessWidget {
+  const _FloatingLetterIndicator({
+    required this.letter,
+    required this.size,
+  });
+
+  final String letter;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: AppColors.white,
+        border: Border.all(
+          color: AppColors.accentGold,
+          width: 3,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.accentGold.withAlpha(150),
+            blurRadius: 15,
+            spreadRadius: 3,
+          ),
+          BoxShadow(
+            color: AppColors.black.withAlpha(80),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Center(
+        child: Text(
+          letter.toUpperCase(),
+          style: TextStyle(
+            fontSize: size * 0.5,
+            fontWeight: FontWeight.bold,
+            color: AppColors.black,
+          ),
+        ),
+      ),
     );
   }
 }

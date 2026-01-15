@@ -583,7 +583,7 @@ class GameCubit extends Cubit<GameState> {
     ));
   }
 
-  /// Use a hint - shows a random valid word for the current letter/category
+  /// Use a hint - animates letters in sequence for a valid word
   /// Returns true if hint was used, false if no hints remaining
   bool useHint() {
     if (state.hintsRemaining <= 0) return false;
@@ -597,21 +597,64 @@ class GameCubit extends Cubit<GameState> {
 
     if (hintWord == null) return false;
 
+    // Compute the sequence of letter node IDs
+    final hintLetterIds = _computeHintLetterSequence(hintWord);
+    if (hintLetterIds.isEmpty) return false;
+
     // Haptic feedback for hint
     HapticService.instance.medium();
 
     emit(state.copyWith(
       hintsRemaining: state.hintsRemaining - 1,
       hintWord: hintWord,
+      hintLetterIds: hintLetterIds,
+      hintAnimationIndex: 0,
     ));
 
-    // Clear the hint after animation time
-    Future.delayed(const Duration(milliseconds: 2500), () {
+    // Animate through the sequence with delays
+    _animateHintSequence(hintLetterIds.length);
+
+    return true;
+  }
+
+  /// Compute the sequence of letter node IDs for the hint word
+  List<int> _computeHintLetterSequence(String word) {
+    final sequence = <int>[];
+    final upperWord = word.toUpperCase().replaceAll(' ', '');
+
+    for (final char in upperWord.split('')) {
+      // Find the letter node for this character
+      final node = state.letters.firstWhere(
+        (l) => l.letter.toUpperCase() == char,
+        orElse: () => const LetterNode(id: -1, letter: '', points: 0, position: Offset.zero),
+      );
+      if (node.id >= 0) {
+        sequence.add(node.id);
+      }
+    }
+
+    return sequence;
+  }
+
+  /// Animate through the hint sequence, highlighting letters one by one
+  void _animateHintSequence(int totalLetters) {
+    const delayPerLetter = Duration(milliseconds: 400);
+    final totalDuration = delayPerLetter * totalLetters + const Duration(milliseconds: 800);
+
+    // Advance through each letter in sequence
+    for (int i = 1; i <= totalLetters; i++) {
+      Future.delayed(delayPerLetter * i, () {
+        if (isClosed) return;
+        if (state.hintWord == null) return; // Hint was cleared
+        emit(state.copyWith(hintAnimationIndex: i));
+      });
+    }
+
+    // Clear the hint after full animation
+    Future.delayed(totalDuration, () {
       if (isClosed) return;
       emit(state.copyWith(clearHintWord: true));
     });
-
-    return true;
   }
 
   /// Clear the hint word (called after animation)

@@ -62,7 +62,9 @@ class GameState extends Equatable {
     this.lastTimeBonus, // Time bonus from last correct answer (for animation)
     // Hints system
     this.hintsRemaining = 3, // Player starts with 3 hints
-    this.hintWord, // Word currently being shown as hint (for animation)
+    this.hintWord, // Word currently being shown as hint (internal)
+    this.hintLetterIds = const [], // Letter node IDs in order for hint animation
+    this.hintAnimationIndex = 0, // Current index in hint animation sequence
   });
 
   /// Special ID for space character in selectedLetterIds
@@ -104,7 +106,9 @@ class GameState extends Equatable {
 
   // Hints system
   final int hintsRemaining; // Number of hints left
-  final String? hintWord; // Word currently being shown as hint
+  final String? hintWord; // Word currently being shown as hint (internal)
+  final List<int> hintLetterIds; // Letter node IDs in order for hint animation
+  final int hintAnimationIndex; // Current index in hint animation sequence
 
   /// Points earned in current letter round
   int get pointsEarnedInRound => score - letterRoundStartScore;
@@ -176,6 +180,8 @@ class GameState extends Equatable {
         lastTimeBonus,
         hintsRemaining,
         hintWord,
+        hintLetterIds,
+        hintAnimationIndex,
       ];
 
   GameState copyWith({
@@ -209,6 +215,8 @@ class GameState extends Equatable {
     int? hintsRemaining,
     String? hintWord,
     bool clearHintWord = false,
+    List<int>? hintLetterIds,
+    int? hintAnimationIndex,
   }) {
     return GameState(
       letters: letters ?? this.letters,
@@ -236,6 +244,8 @@ class GameState extends Equatable {
       lastTimeBonus: clearLastTimeBonus ? null : (lastTimeBonus ?? this.lastTimeBonus),
       hintsRemaining: hintsRemaining ?? this.hintsRemaining,
       hintWord: clearHintWord ? null : (hintWord ?? this.hintWord),
+      hintLetterIds: clearHintWord ? const [] : (hintLetterIds ?? this.hintLetterIds),
+      hintAnimationIndex: clearHintWord ? 0 : (hintAnimationIndex ?? this.hintAnimationIndex),
     );
   }
 }

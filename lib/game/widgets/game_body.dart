@@ -483,92 +483,29 @@ class _GameBodyState extends State<GameBody> with SingleTickerProviderStateMixin
 
         const SizedBox(height: AppSpacing.sm),
 
-        // Letter constellation with hint overlay
+        // Letter constellation
         Expanded(
           child: Padding(
             padding: const EdgeInsets.symmetric(
               horizontal: AppSpacing.sm,
             ),
-            child: Stack(
-              children: [
-                LetterConstellation(
-                  letters: state.letters,
-                  selectedLetterIds: state.selectedLetterIds,
-                  currentDragPosition: state.currentDragPosition,
-                  isDragging: state.isDragging,
-                  startingLetter: state.currentLetter,
-                  hintWord: state.hintWord,
-                  onDragStart: (pos) {
-                    context.read<GameCubit>().startDrag(pos);
-                  },
-                  onDragUpdate: (pos) {
-                    context.read<GameCubit>().updateDrag(pos);
-                  },
-                  onDragEnd: () {
-                    context.read<GameCubit>().endDrag();
-                  },
-                ),
-                // Floating hint word display
-                if (state.hintWord != null)
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    child: Center(
-                      child: TweenAnimationBuilder<double>(
-                        tween: Tween(begin: 0.0, end: 1.0),
-                        duration: const Duration(milliseconds: 300),
-                        builder: (context, opacity, child) {
-                          return Opacity(
-                            opacity: opacity,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: [
-                                    AppColors.accentOrange,
-                                    AppColors.accentGold,
-                                  ],
-                                ),
-                                borderRadius: BorderRadius.circular(20),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppColors.accentOrange.withAlpha(150),
-                                    blurRadius: 12,
-                                    spreadRadius: 2,
-                                  ),
-                                ],
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(
-                                    Icons.lightbulb,
-                                    color: AppColors.black,
-                                    size: 18,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    state.hintWord!.toUpperCase(),
-                                    style: GoogleFonts.orbitron(
-                                      color: AppColors.black,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      letterSpacing: 2,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-              ],
+            child: LetterConstellation(
+              letters: state.letters,
+              selectedLetterIds: state.selectedLetterIds,
+              currentDragPosition: state.currentDragPosition,
+              isDragging: state.isDragging,
+              startingLetter: state.currentLetter,
+              hintLetterIds: state.hintLetterIds,
+              hintAnimationIndex: state.hintAnimationIndex,
+              onDragStart: (pos) {
+                context.read<GameCubit>().startDrag(pos);
+              },
+              onDragUpdate: (pos) {
+                context.read<GameCubit>().updateDrag(pos);
+              },
+              onDragEnd: () {
+                context.read<GameCubit>().endDrag();
+              },
             ),
           ),
         ),
