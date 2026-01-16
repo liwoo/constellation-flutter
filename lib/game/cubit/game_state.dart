@@ -65,6 +65,8 @@ class GameState extends Equatable {
     this.hintWord, // Word currently being shown as hint (internal)
     this.hintLetterIds = const [], // Letter node IDs in order for hint animation
     this.hintAnimationIndex = 0, // Current index in hint animation sequence
+    // Predictive highlighting (letters in drag direction)
+    this.approachingLetterIds = const [],
   });
 
   /// Special ID for space character in selectedLetterIds
@@ -109,6 +111,9 @@ class GameState extends Equatable {
   final String? hintWord; // Word currently being shown as hint (internal)
   final List<int> hintLetterIds; // Letter node IDs in order for hint animation
   final int hintAnimationIndex; // Current index in hint animation sequence
+
+  // Predictive highlighting - letters in the direction user is dragging
+  final List<int> approachingLetterIds;
 
   /// Points earned in current letter round
   int get pointsEarnedInRound => score - letterRoundStartScore;
@@ -182,6 +187,7 @@ class GameState extends Equatable {
         hintWord,
         hintLetterIds,
         hintAnimationIndex,
+        approachingLetterIds,
       ];
 
   GameState copyWith({
@@ -217,6 +223,7 @@ class GameState extends Equatable {
     bool clearHintWord = false,
     List<int>? hintLetterIds,
     int? hintAnimationIndex,
+    List<int>? approachingLetterIds,
   }) {
     return GameState(
       letters: letters ?? this.letters,
@@ -246,6 +253,7 @@ class GameState extends Equatable {
       hintWord: clearHintWord ? null : (hintWord ?? this.hintWord),
       hintLetterIds: clearHintWord ? const [] : (hintLetterIds ?? this.hintLetterIds),
       hintAnimationIndex: clearHintWord ? 0 : (hintAnimationIndex ?? this.hintAnimationIndex),
+      approachingLetterIds: approachingLetterIds ?? this.approachingLetterIds,
     );
   }
 }

@@ -40,16 +40,16 @@ class LetterConstellation extends StatelessWidget {
 
   /// Find the letter node nearest to a position (within hit radius)
   LetterNode? _findNearestLetter(Offset relativePosition) {
-    const hitRadius = 0.06; // Radius to detect nearby letter
+    const hitRadius = 0.08; // Radius to detect nearby letter
     LetterNode? nearest;
-    double minDistance = hitRadius;
+    double minDistanceSq = hitRadius * hitRadius;
 
     for (final node in letters) {
-      final dx = (node.position.dx - relativePosition.dx).abs();
-      final dy = (node.position.dy - relativePosition.dy).abs();
-      final distance = (dx * dx + dy * dy);
-      if (distance < minDistance * minDistance) {
-        minDistance = distance;
+      final dx = node.position.dx - relativePosition.dx;
+      final dy = node.position.dy - relativePosition.dy;
+      final distanceSq = dx * dx + dy * dy;
+      if (distanceSq < minDistanceSq) {
+        minDistanceSq = distanceSq;
         nearest = node;
       }
     }
@@ -121,7 +121,7 @@ class LetterConstellation extends StatelessWidget {
                 ),
               ),
 
-              // Letter bubbles with dynamic sizing
+              // Letter bubbles - static positions, no movement
               ...letters.map((letter) {
                 final x = letter.position.dx * constraints.maxWidth;
                 final y = letter.position.dy * constraints.maxHeight;
@@ -146,20 +146,24 @@ class LetterConstellation extends StatelessWidget {
                 );
               }),
 
-              // Floating letter indicator (shows letter near touch point)
+              // Floating letter indicator (iPhone keyboard style)
+              // Shows letter above finger with two states:
+              // - Passing through (white) vs Connected (gold)
               if (isDragging && currentDragPosition != null)
                 Builder(
                   builder: (context) {
                     final nearestLetter = _findNearestLetter(currentDragPosition!);
                     if (nearestLetter == null) return const SizedBox.shrink();
 
-                    // Position offset from touch point (above and slightly left)
+                    // Check if this letter is already connected (selected)
+                    final isConnected = selectedLetterIds.contains(nearestLetter.id);
+
+                    // Position above the touch point
                     final touchX = currentDragPosition!.dx * containerSize.width;
                     final touchY = currentDragPosition!.dy * containerSize.height;
 
-                    // Offset: 60px above the touch point
-                    const offsetY = -70.0;
-                    const indicatorSize = 52.0;
+                    const offsetY = -75.0;
+                    const indicatorSize = 56.0;
 
                     return Positioned(
                       left: touchX - (indicatorSize / 2),
@@ -168,6 +172,7 @@ class LetterConstellation extends StatelessWidget {
                         child: _FloatingLetterIndicator(
                           letter: nearestLetter.letter,
                           size: indicatorSize,
+                          isConnected: isConnected,
                         ),
                       ),
                     );
@@ -182,31 +187,42 @@ class LetterConstellation extends StatelessWidget {
 }
 
 /// Floating letter indicator that appears above the touch point
-/// Similar to iOS keyboard letter preview
+/// Like iOS keyboard - shows the letter you're hovering over
+/// Two states: passing through (white) vs connected (gold)
 class _FloatingLetterIndicator extends StatelessWidget {
   const _FloatingLetterIndicator({
     required this.letter,
     required this.size,
+    this.isConnected = false,
   });
 
   final String letter;
   final double size;
+  final bool isConnected; // True if letter is already selected/connected
 
   @override
   Widget build(BuildContext context) {
+    // Different styles for connected vs passing through
+    final backgroundColor = isConnected ? AppColors.accentGold : AppColors.white;
+    final borderColor = isConnected ? AppColors.accentOrange : AppColors.accentGold;
+    final textColor = isConnected ? AppColors.white : AppColors.black;
+    final glowColor = isConnected
+        ? AppColors.accentOrange.withAlpha(200)
+        : AppColors.accentGold.withAlpha(150);
+
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: AppColors.white,
+        color: backgroundColor,
         border: Border.all(
-          color: AppColors.accentGold,
+          color: borderColor,
           width: 3,
         ),
         boxShadow: [
           BoxShadow(
-            color: AppColors.accentGold.withAlpha(150),
+            color: glowColor,
             blurRadius: 15,
             spreadRadius: 3,
           ),
@@ -223,7 +239,7 @@ class _FloatingLetterIndicator extends StatelessWidget {
           style: TextStyle(
             fontSize: size * 0.5,
             fontWeight: FontWeight.bold,
-            color: AppColors.black,
+            color: textColor,
           ),
         ),
       ),
