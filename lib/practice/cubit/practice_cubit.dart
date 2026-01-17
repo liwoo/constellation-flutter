@@ -149,46 +149,62 @@ class PracticeCubit extends Cubit<PracticeState> {
     return selected;
   }
 
-  /// Generate letter nodes for constellation
+  /// Generate letter nodes in QWERTY keyboard layout
+  /// Compact layout anchored to bottom, like a real keyboard
   List<LetterNode> _generateLetterNodes() {
-    final random = Random();
     final letters = <LetterNode>[];
 
-    const cols = 6;
-    const rows = 5;
-    const paddingX = 0.10;
-    const paddingY = 0.05;
-    const availableWidth = 1.0 - (paddingX * 2);
-    const availableHeight = 0.88 - paddingY;
-    const cellWidth = availableWidth / cols;
-    const cellHeight = availableHeight / rows;
-    const jitterX = cellWidth * 0.25;
-    const jitterY = cellHeight * 0.20;
+    // QWERTY keyboard rows
+    const row1 = ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P']; // 10 letters
+    const row2 = ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'];      // 9 letters
+    const row3 = ['Z', 'X', 'C', 'V', 'B', 'N', 'M'];                // 7 letters
 
-    final gridPositions = <Offset>[];
-    for (int row = 0; row < rows; row++) {
-      for (int col = 0; col < cols; col++) {
-        final baseX = paddingX + (col + 0.5) * cellWidth;
-        final baseY = paddingY + (row + 0.5) * cellHeight;
-        final x = baseX + (random.nextDouble() - 0.5) * 2 * jitterX;
-        final y = baseY + (random.nextDouble() - 0.5) * 2 * jitterY;
-        gridPositions.add(Offset(
-          x.clamp(paddingX, 1.0 - paddingX),
-          y.clamp(paddingY, 0.88),
-        ));
-      }
+    // Layout configuration - bottom-anchored with comfortable spacing
+    const paddingX = 0.05;
+    const bottomPadding = 0.18; // Distance from bottom
+    const availableWidth = 1.0 - (paddingX * 2);
+    const rowSpacing = 0.20; // Comfortable spacing between rows
+
+    // Calculate positions anchored from bottom
+    // Row 3 is at bottom, Row 1 is at top of keyboard area
+    Map<String, Offset> letterPositions = {};
+
+    // Row 3 (bottom row) - 7 letters, more indent
+    const row3Indent = 0.12;
+    final row3Width = availableWidth - (row3Indent * 2);
+    for (int i = 0; i < row3.length; i++) {
+      final x = paddingX + row3Indent + (i + 0.5) * (row3Width / row3.length);
+      final y = 1.0 - bottomPadding; // Anchored to bottom
+      letterPositions[row3[i]] = Offset(x, y);
     }
 
-    gridPositions.shuffle(random);
+    // Row 2 (middle row) - 9 letters, slight indent
+    const row2Indent = 0.04;
+    final row2Width = availableWidth - (row2Indent * 2);
+    for (int i = 0; i < row2.length; i++) {
+      final x = paddingX + row2Indent + (i + 0.5) * (row2Width / row2.length);
+      final y = 1.0 - bottomPadding - rowSpacing;
+      letterPositions[row2[i]] = Offset(x, y);
+    }
 
+    // Row 1 (top row) - 10 letters, no indent
+    for (int i = 0; i < row1.length; i++) {
+      final x = paddingX + (i + 0.5) * (availableWidth / row1.length);
+      final y = 1.0 - bottomPadding - rowSpacing * 2;
+      letterPositions[row1[i]] = Offset(x, y);
+    }
+
+    // Create letter nodes in alphabetical order (for consistent IDs)
     for (int i = 0; i < 26; i++) {
       final letter = String.fromCharCode('A'.codeUnitAt(0) + i);
       final points = _letterPoints[letter] ?? 1;
+      final position = letterPositions[letter] ?? const Offset(0.5, 0.5);
+
       letters.add(LetterNode(
         id: i,
         letter: letter,
         points: points,
-        position: gridPositions[i],
+        position: position,
       ));
     }
 
