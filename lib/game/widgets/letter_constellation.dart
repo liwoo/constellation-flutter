@@ -17,6 +17,7 @@ class LetterConstellation extends StatelessWidget {
     this.startingLetter,
     this.hintLetterIds = const [],
     this.hintAnimationIndex = 0,
+    this.approachingLetterIds = const [],
   });
 
   final List<LetterNode> letters;
@@ -29,6 +30,7 @@ class LetterConstellation extends StatelessWidget {
   final String? startingLetter; // Letter to highlight as starting point
   final List<int> hintLetterIds; // Letter node IDs in order for hint animation
   final int hintAnimationIndex; // Current position in the hint animation
+  final List<int> approachingLetterIds; // Letter IDs being hovered over
 
   /// Check if a letter should be highlighted as hint (already revealed in sequence)
   bool _isHintLetter(int letterId) {
@@ -111,6 +113,7 @@ class LetterConstellation extends StatelessWidget {
                 final isStarting = startingLetter != null &&
                     letter.letter.toUpperCase() == startingLetter!.toUpperCase();
                 final isHint = _isHintLetter(letter.id);
+                final isApproaching = approachingLetterIds.contains(letter.id);
 
                 return Positioned(
                   left: x - (bubbleSize / 2),
@@ -122,6 +125,7 @@ class LetterConstellation extends StatelessWidget {
                       isSelected: isSelected,
                       isStartingLetter: isStarting,
                       isHintLetter: isHint,
+                      isApproaching: isApproaching,
                       size: bubbleSize,
                     ),
                   ),

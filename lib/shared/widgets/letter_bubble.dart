@@ -12,6 +12,7 @@ class LetterBubble extends StatefulWidget {
     this.isSelected = false,
     this.isStartingLetter = false,
     this.isHintLetter = false,
+    this.isApproaching = false,
     this.onTap,
     this.size = AppConstants.letterBubbleSize,
   });
@@ -21,6 +22,7 @@ class LetterBubble extends StatefulWidget {
   final bool isSelected;
   final bool isStartingLetter; // Highlight as the letter to start with
   final bool isHintLetter; // Highlight as part of hint word (animated)
+  final bool isApproaching; // Hovering/dwelling over this letter
   final VoidCallback? onTap;
   final double size;
 
@@ -75,7 +77,8 @@ class _LetterBubbleState extends State<LetterBubble>
         children: [
           // Outer glow effect (star-like)
           if (widget.isSelected) _buildSelectedGlow(),
-          if (widget.isStartingLetter && !widget.isSelected) _buildStartingLetterGlow(),
+          if (widget.isApproaching && !widget.isSelected) _buildApproachingGlow(),
+          if (widget.isStartingLetter && !widget.isSelected && !widget.isApproaching) _buildStartingLetterGlow(),
           if (widget.isHintLetter) _buildHintGlow(),
           _buildStarGlow(),
 
@@ -91,10 +94,16 @@ class _LetterBubbleState extends State<LetterBubble>
               size: AppConstants.badgeSizeSmall,
               backgroundColor: widget.isHintLetter
                   ? AppColors.accentOrange
+                  : widget.isApproaching
+                      ? AppColors.white
+                      : widget.isStartingLetter
+                          ? AppColors.accentCyan
+                          : AppColors.accentGold,
+              textColor: widget.isApproaching
+                  ? AppColors.black
                   : widget.isStartingLetter
-                      ? AppColors.accentCyan
-                      : AppColors.accentGold,
-              textColor: widget.isStartingLetter ? Colors.white : AppColors.black,
+                      ? Colors.white
+                      : AppColors.black,
             ),
           ),
         ],
@@ -114,7 +123,13 @@ class _LetterBubbleState extends State<LetterBubble>
       );
     }
 
-    return content;
+    // Animate scale for approaching state
+    return AnimatedScale(
+      scale: widget.isApproaching ? 1.25 : 1.0,
+      duration: const Duration(milliseconds: 150),
+      curve: Curves.easeOut,
+      child: content,
+    );
   }
 
   Widget _buildHintGlow() {
@@ -159,6 +174,34 @@ class _LetterBubbleState extends State<LetterBubble>
               color: AppColors.accentGold.withAlpha(150),
               blurRadius: 20,
               spreadRadius: 2,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildApproachingGlow() {
+    return Positioned(
+      left: -10,
+      top: -10,
+      right: -10,
+      bottom: -10,
+      child: Container(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          boxShadow: [
+            // Bright white inner glow
+            BoxShadow(
+              color: Colors.white.withAlpha(230),
+              blurRadius: 18,
+              spreadRadius: 5,
+            ),
+            // Subtle cyan outer glow
+            BoxShadow(
+              color: AppColors.accentCyan.withAlpha(120),
+              blurRadius: 25,
+              spreadRadius: 8,
             ),
           ],
         ),

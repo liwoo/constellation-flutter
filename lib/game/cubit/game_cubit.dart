@@ -26,7 +26,7 @@ class GameCubit extends Cubit<GameState> {
   DateTime? _lastDragTime;
 
   // Tuning constants
-  static const Duration _dwellTime = Duration(seconds: 2);
+  static const Duration _dwellTime = Duration(seconds: 1);
   // Velocity threshold - if moving faster than this, user is "passing through"
   // Lower = must slow down more to trigger selection (more magnetic/sticky)
   // (relative units per second)
@@ -435,7 +435,10 @@ class GameCubit extends Cubit<GameState> {
           _pendingLetterId = null;
           _pendingLetterEnteredAt = null;
         }
-        emit(state.copyWith(currentDragPosition: relativePosition));
+        emit(state.copyWith(
+          currentDragPosition: relativePosition,
+          approachingLetterIds: [], // Clear approaching when passing through
+        ));
         return;
       }
 
@@ -446,14 +449,20 @@ class GameCubit extends Cubit<GameState> {
         if (elapsed >= _dwellTime) {
           _confirmLetterSelection(outerHitNode.id, relativePosition);
         } else {
-          // Still waiting - just update position
-          emit(state.copyWith(currentDragPosition: relativePosition));
+          // Still waiting - show approaching state
+          emit(state.copyWith(
+            currentDragPosition: relativePosition,
+            approachingLetterIds: [outerHitNode.id],
+          ));
         }
       } else {
         // New letter entered outer zone - start tracking
         _pendingLetterId = outerHitNode.id;
         _pendingLetterEnteredAt = now;
-        emit(state.copyWith(currentDragPosition: relativePosition));
+        emit(state.copyWith(
+          currentDragPosition: relativePosition,
+          approachingLetterIds: [outerHitNode.id],
+        ));
       }
       return;
     }
@@ -461,7 +470,10 @@ class GameCubit extends Cubit<GameState> {
     // Case 3: Outside all zones - clear pending and update position
     _pendingLetterId = null;
     _pendingLetterEnteredAt = null;
-    emit(state.copyWith(currentDragPosition: relativePosition));
+    emit(state.copyWith(
+      currentDragPosition: relativePosition,
+      approachingLetterIds: [], // Clear approaching when outside
+    ));
   }
 
   /// Confirm selection of a letter - only if it could lead to a valid word
@@ -498,6 +510,7 @@ class GameCubit extends Cubit<GameState> {
     emit(state.copyWith(
       selectedLetterIds: newSelection,
       currentDragPosition: position,
+      approachingLetterIds: [], // Clear approaching - letter is now selected
     ));
   }
 
@@ -511,6 +524,7 @@ class GameCubit extends Cubit<GameState> {
     emit(state.copyWith(
       isDragging: false,
       clearDragPosition: true,
+      approachingLetterIds: [], // Clear approaching state
     ));
   }
 

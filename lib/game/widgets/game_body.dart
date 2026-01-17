@@ -497,6 +497,7 @@ class _GameBodyState extends State<GameBody> with SingleTickerProviderStateMixin
               startingLetter: state.currentLetter,
               hintLetterIds: state.hintLetterIds,
               hintAnimationIndex: state.hintAnimationIndex,
+              approachingLetterIds: state.approachingLetterIds,
               onDragStart: (pos) {
                 context.read<GameCubit>().startDrag(pos);
               },
