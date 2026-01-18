@@ -497,8 +497,9 @@ class GameCubit extends Cubit<GameState> {
     final hit = _findSelectableAtPosition(relativePosition, _innerHitRadius);
 
     if (hasExistingSelection) {
-      // Continue from existing selection - NOT a pure connection
-      // (user lifted finger and is now continuing)
+      // Continue from existing selection
+      // NOTE: We preserve isPureConnection here because the user might have
+      // just tapped x2 or space button. Only selectLetter() breaks pure connection.
       if (hit != null) {
         final lastId = state.selectedLetterIds.last;
         if (hit.id != lastId) {
@@ -506,7 +507,6 @@ class GameCubit extends Cubit<GameState> {
           emit(state.copyWith(
             isDragging: true,
             currentDragPosition: relativePosition,
-            isPureConnection: false, // Breaking pure connection by continuing after lift
           ));
           _confirmSelection(hit.id, hit.letter, hit.isOrb, relativePosition);
         } else {
@@ -514,7 +514,6 @@ class GameCubit extends Cubit<GameState> {
           emit(state.copyWith(
             isDragging: true,
             currentDragPosition: relativePosition,
-            isPureConnection: false, // Breaking pure connection by continuing after lift
           ));
         }
       } else {
@@ -522,7 +521,6 @@ class GameCubit extends Cubit<GameState> {
         emit(state.copyWith(
           isDragging: true,
           currentDragPosition: relativePosition,
-          isPureConnection: false, // Breaking pure connection by continuing after lift
         ));
       }
     } else {

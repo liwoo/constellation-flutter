@@ -176,27 +176,45 @@ class CelebrationStatsPanel extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // Score - counts up
-          AnimatedCounter(
-            label: 'Score',
-            endValue: score,
-            startValue: score - pointsEarned, // Start from previous score
-            suffix: ' pts',
-            duration: const Duration(milliseconds: 800),
-            delay: const Duration(milliseconds: 200),
-            isHighlighted: true,
-            hapticInterval: 3,
-          ),
-          const SizedBox(height: 16),
-
           // Letters Done - quick count
           AnimatedCounter(
             label: 'Letters Done',
             endValue: lettersCompleted,
             suffix: ' / 25',
             duration: const Duration(milliseconds: 400),
-            delay: const Duration(milliseconds: 600),
+            delay: const Duration(milliseconds: 200),
             hapticInterval: 1,
+          ),
+          const SizedBox(height: 12),
+
+          // Round Score - points earned this round (highlighted)
+          AnimatedCounter(
+            label: 'Round Score',
+            endValue: pointsEarned,
+            suffix: ' pts',
+            duration: const Duration(milliseconds: 600),
+            delay: const Duration(milliseconds: 500),
+            isHighlighted: true,
+            hapticInterval: 2,
+          ),
+          const SizedBox(height: 12),
+
+          // Total Score
+          AnimatedCounter(
+            label: 'Total Score',
+            endValue: score,
+            startValue: score - pointsEarned,
+            suffix: ' pts',
+            duration: const Duration(milliseconds: 800),
+            delay: const Duration(milliseconds: 800),
+            hapticInterval: 3,
+          ),
+          const SizedBox(height: 16),
+
+          // Divider
+          Container(
+            height: 1,
+            color: AppColors.accentGold.withAlpha(50),
           ),
           const SizedBox(height: 16),
 
@@ -206,12 +224,12 @@ class CelebrationStatsPanel extends StatelessWidget {
             endValue: timeRemaining,
             suffix: 's',
             duration: const Duration(milliseconds: 600),
-            delay: const Duration(milliseconds: 900),
+            delay: const Duration(milliseconds: 1100),
             hapticInterval: 5,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
 
-          // Next Round Time - highlight the bonus
+          // Next Round Time - highlight the bonus calculation
           _NextRoundCounter(
             timeRemaining: timeRemaining,
             pointsEarned: pointsEarned,
@@ -223,7 +241,7 @@ class CelebrationStatsPanel extends StatelessWidget {
 }
 
 /// Special counter for next round that shows the time bonus animation
-/// Formula: (timeRemaining * 2) + pointsEarned
+/// Formula: (timeRemaining * 2) + roundScore
 class _NextRoundCounter extends StatefulWidget {
   const _NextRoundCounter({
     required this.timeRemaining,
@@ -242,7 +260,7 @@ class _NextRoundCounterState extends State<_NextRoundCounter>
   late AnimationController _controller;
   late Animation<double> _timeAnimation;
   bool _started = false;
-  bool _showBonus = false;
+  bool _showFormula = false;
 
   @override
   void initState() {
@@ -252,7 +270,7 @@ class _NextRoundCounterState extends State<_NextRoundCounter>
       duration: const Duration(milliseconds: 1500),
     );
 
-    // New formula: double remaining time + points earned
+    // Formula: double remaining time + round score
     final doubledTime = widget.timeRemaining * 2;
     final endTime = doubledTime + widget.pointsEarned;
     _timeAnimation = Tween<double>(
@@ -266,11 +284,11 @@ class _NextRoundCounterState extends State<_NextRoundCounter>
     _timeAnimation.addListener(_onAnimationUpdate);
 
     // Start after delay
-    Future.delayed(const Duration(milliseconds: 1200), () {
+    Future.delayed(const Duration(milliseconds: 1400), () {
       if (mounted) {
         setState(() {
           _started = true;
-          _showBonus = true;
+          _showFormula = true;
         });
         _controller.forward();
       }
@@ -301,65 +319,78 @@ class _NextRoundCounterState extends State<_NextRoundCounter>
 
   @override
   Widget build(BuildContext context) {
+    final doubledTime = widget.timeRemaining * 2;
+    final endTime = doubledTime + widget.pointsEarned;
+
     return AnimatedOpacity(
       opacity: _started ? 1.0 : 0.0,
       duration: const Duration(milliseconds: 200),
-      child: AnimatedBuilder(
-        animation: _timeAnimation,
-        builder: (context, child) {
-          final value = _timeAnimation.value.round();
-
-          return Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Next Round',
-                style: GoogleFonts.exo2(
-                  color: Colors.white.withAlpha(180),
-                  fontSize: 14,
+      child: Column(
+        children: [
+          // Formula breakdown
+          if (_showFormula)
+            AnimatedOpacity(
+              opacity: _controller.value > 0.1 ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 300),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.accentGold.withAlpha(30),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '(${widget.timeRemaining}s × 2) + ${widget.pointsEarned} pts = ${endTime}s',
+                  style: GoogleFonts.exo2(
+                    color: AppColors.accentGold.withAlpha(200),
+                    fontSize: 12,
+                  ),
                 ),
               ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
+            ),
+          const SizedBox(height: 12),
+
+          // Next Round result
+          AnimatedBuilder(
+            animation: _timeAnimation,
+            builder: (context, child) {
+              final value = _timeAnimation.value.round();
+
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    '${value}s',
-                    style: GoogleFonts.orbitron(
-                      color: AppColors.accentGold,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                    'Next Round',
+                    style: GoogleFonts.exo2(
+                      color: Colors.white.withAlpha(180),
+                      fontSize: 14,
                     ),
                   ),
-                  if (_showBonus) ...[
-                    const SizedBox(width: 8),
-                    AnimatedOpacity(
-                      opacity: _controller.isCompleted ? 1.0 : 0.5,
-                      duration: const Duration(milliseconds: 300),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.accentGold.withAlpha(50),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          'x2 +${widget.pointsEarned}',
-                          style: GoogleFonts.orbitron(
-                            color: AppColors.accentGold,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '${value}s',
+                        style: GoogleFonts.orbitron(
+                          color: AppColors.accentGold,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ),
-                  ],
+                      if (_controller.isCompleted) ...[
+                        const SizedBox(width: 8),
+                        Icon(
+                          Icons.arrow_upward,
+                          color: AppColors.accentGold,
+                          size: 18,
+                        ),
+                      ],
+                    ],
+                  ),
                 ],
-              ),
-            ],
-          );
-        },
+              );
+            },
+          ),
+        ],
       ),
     );
   }
