@@ -40,17 +40,15 @@ class LetterConstellation extends StatelessWidget {
     return visibleHintIds.contains(letterId);
   }
 
-  /// Calculate dynamic bubble size based on container dimensions
-  /// Fits 26 letters with proper spacing
-  double _calculateBubbleSize(Size containerSize) {
-    // For 26 letters, we need roughly 6 columns and 5 rows
-    // Use the smaller dimension to ensure bubbles fit
-    final minDimension = containerSize.width < containerSize.height
-        ? containerSize.width
-        : containerSize.height;
+  /// Calculate bubble size based on device screen size (not container)
+  /// This ensures letters don't shrink when word display area changes
+  double _calculateBubbleSize(BuildContext context) {
+    final screenSize = MediaQuery.of(context).size;
+    final minDimension = screenSize.width < screenSize.height
+        ? screenSize.width
+        : screenSize.height;
 
-    // Bubble size is approximately 1/7 of the smaller dimension
-    // This allows for 6 bubbles with spacing
+    // Bubble size is approximately 1/7 of the smaller screen dimension
     final calculatedSize = minDimension / 7.5;
 
     // Clamp to reasonable bounds
@@ -59,12 +57,12 @@ class LetterConstellation extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Calculate bubble size from screen size (constant for this device)
+    final bubbleSize = _calculateBubbleSize(context);
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final containerSize = Size(constraints.maxWidth, constraints.maxHeight);
-
-        // Calculate dynamic bubble size based on screen
-        final bubbleSize = _calculateBubbleSize(containerSize);
 
         // Get positions of selected letters for drawing connections
         final selectedPositions = selectedLetterIds

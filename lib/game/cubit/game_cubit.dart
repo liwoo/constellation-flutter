@@ -68,6 +68,7 @@ class GameCubit extends Cubit<GameState> {
       timeRemaining: 250, // Start with 250 seconds, carries over between rounds
       score: 0,
       letterRound: 1,
+      letterRoundStartScore: 0, // Reset so pointsEarnedInRound starts fresh
       completedLetters: [],
       isPlaying: false, // Timer not started yet
       isWinner: false,
@@ -122,11 +123,106 @@ class GameCubit extends Cubit<GameState> {
 
   /// Called when category jackpot animation completes
   void onCategoryRevealed() {
+    // Generate letters only for valid words in this round
+    final roundLetters = _generateLettersForRound(
+      state.category,
+      state.currentLetter!,
+    );
+
     emit(state.copyWith(
       phase: GamePhase.playingRound,
       selectedLetterIds: [],
       committedWord: '',
+      letters: roundLetters,
     ));
+  }
+
+  /// Get all unique letters needed for valid words in this category/letter round
+  Set<String> _getLettersForRound(String category, String letter) {
+    final words = _dictionary.getWordsForCategoryAndLetter(category, letter);
+    final letters = <String>{};
+
+    for (final word in words) {
+      // Extract all letters (ignore spaces, convert to uppercase)
+      for (final char in word.toUpperCase().split('')) {
+        if (char.codeUnitAt(0) >= 65 && char.codeUnitAt(0) <= 90) {
+          letters.add(char);
+        }
+      }
+    }
+
+    return letters;
+  }
+
+  /// Generate letter nodes only for letters needed in this round
+  /// Uses randomized grid placement (not QWERTY)
+  List<LetterNode> _generateLettersForRound(String category, String letter) {
+    final neededLetters = _getLettersForRound(category, letter).toList();
+    neededLetters.sort(); // Sort alphabetically for consistent IDs
+
+    final letters = <LetterNode>[];
+
+    // Grid configuration based on number of letters
+    final count = neededLetters.length;
+    final cols = count <= 9 ? 3 : (count <= 16 ? 4 : (count <= 25 ? 5 : 6));
+    final rows = (count / cols).ceil();
+
+    // Padding from edges
+    const paddingX = 0.08;
+    const paddingY = 0.08;
+
+    // Available area
+    const availableWidth = 1.0 - (paddingX * 2);
+    const availableHeight = 0.84 - paddingY;
+
+    // Cell size
+    final cellWidth = availableWidth / cols;
+    final cellHeight = availableHeight / rows;
+
+    // Jitter amount (randomness within cell)
+    final jitterX = cellWidth * 0.20;
+    final jitterY = cellHeight * 0.20;
+
+    // Generate grid positions
+    final gridPositions = <Offset>[];
+    for (int row = 0; row < rows; row++) {
+      for (int col = 0; col < cols; col++) {
+        if (gridPositions.length >= count) break;
+
+        // Calculate base position (center of cell)
+        final baseX = paddingX + (col + 0.5) * cellWidth;
+        final baseY = paddingY + (row + 0.5) * cellHeight;
+
+        // Add jitter
+        final x = baseX + (_random.nextDouble() - 0.5) * 2 * jitterX;
+        final y = baseY + (_random.nextDouble() - 0.5) * 2 * jitterY;
+
+        gridPositions.add(Offset(
+          x.clamp(paddingX, 1.0 - paddingX),
+          y.clamp(paddingY, 0.84),
+        ));
+      }
+    }
+
+    // Shuffle positions for random letter placement
+    gridPositions.shuffle(_random);
+
+    // Create letter nodes
+    for (int i = 0; i < neededLetters.length; i++) {
+      final letterChar = neededLetters[i];
+      final points = _letterPoints[letterChar] ?? 1;
+      // Use alphabetical index as ID for consistency
+      final id = letterChar.codeUnitAt(0) - 'A'.codeUnitAt(0);
+
+      letters.add(LetterNode(
+        id: id,
+        letter: letterChar,
+        points: points,
+        position: gridPositions[i],
+      ));
+    }
+
+    return letters;
   }
 
   /// Get 5 random categories that have words for the letter
@@ -288,11 +384,11 @@ class GameCubit extends Cubit<GameState> {
   }
 
   // Hit detection radii (relative to container size)
-  // Scaled for 26 letters - smaller to avoid overlap
+  // Larger radii now that we have fewer, more spread out letters
   // Inner radius: immediate selection (must be very close to center)
-  static const double _innerHitRadius = 0.035;
+  static const double _innerHitRadius = 0.05;
   // Outer radius: dwell-time selection (awareness zone)
-  static const double _outerHitRadius = 0.055;
+  static const double _outerHitRadius = 0.08;
 
   /// Start dragging from a position - check if it hits a letter
   /// If there's an existing selection (e.g., after pressing x2), continue from it
@@ -923,6 +1019,7 @@ class GameCubit extends Cubit<GameState> {
     emit(state.copyWith(
       phase: GamePhase.notStarted,
       score: 0,
+      letterRoundStartScore: 0, // Reset so pointsEarnedInRound starts fresh
       timeRemaining: 250, // Reset to starting time
       completedLetters: [],
       completedWords: [],
