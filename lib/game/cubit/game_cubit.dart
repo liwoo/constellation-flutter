@@ -32,6 +32,29 @@ class GameCubit extends Cubit<GameState> {
   // (relative units per second)
   static const double _passThroughVelocity = 0.15;
 
+  // Mystery orb configuration - count increases with difficulty
+  // Round 1-5: 0, Round 6-10: 1, Round 11-15: 2, Round 16-20: 3, Round 21-25: 4-5
+  int get _mysteryOrbCount {
+    final round = state.letterRound;
+    if (round <= 5) return 0;
+    if (round <= 10) return 1;
+    if (round <= 15) return 2;
+    if (round <= 20) return 3;
+    if (round <= 23) return 4;
+    return 5; // Rounds 24-25
+  }
+
+  // Mystery outcome probabilities (must sum to 100)
+  // Rewards (65% total): timeBonus 40%, scoreMultiplier 15%, freeHint 10%
+  // Penalties (35% total): timePenalty 25%, scrambleLetters 10%
+  static const Map<MysteryOutcome, int> _mysteryOutcomeProbabilities = {
+    MysteryOutcome.timeBonus: 40,
+    MysteryOutcome.scoreMultiplier: 15,
+    MysteryOutcome.freeHint: 10,
+    MysteryOutcome.timePenalty: 25,
+    MysteryOutcome.scrambleLetters: 10,
+  };
+
   // Letter point values (Scrabble-style)
   static const Map<String, int> _letterPoints = {
     'A': 1, 'B': 3, 'C': 3, 'D': 2, 'E': 1, 'F': 4, 'G': 2, 'H': 4,
@@ -80,6 +103,13 @@ class GameCubit extends Cubit<GameState> {
       clearLastAnswerCorrect: true,
       hintsRemaining: 3, // Start with 3 hints
       clearHintWord: true,
+      // Reset mystery orb state
+      mysteryOrbs: [],
+      consecutivePenalties: 0,
+      scoreMultiplierActive: false,
+      clearLastMysteryOutcome: true,
+      clearPendingMysteryOrb: true,
+      clearMysteryOrbDwellStartTime: true,
     ));
   }
 
@@ -123,8 +153,8 @@ class GameCubit extends Cubit<GameState> {
 
   /// Called when category jackpot animation completes
   void onCategoryRevealed() {
-    // Generate letters only for valid words in this round
-    final roundLetters = _generateLettersForRound(
+    // Generate letters AND mystery orbs together in the same grid (like Scrabble blanks)
+    final result = _generateLettersAndMysteryOrbs(
       state.category,
       state.currentLetter!,
     );
@@ -133,7 +163,10 @@ class GameCubit extends Cubit<GameState> {
       phase: GamePhase.playingRound,
       selectedLetterIds: [],
       committedWord: '',
-      letters: roundLetters,
+      letters: result.letters,
+      mysteryOrbs: result.mysteryOrbs, // Already active, part of the grid
+      clearPendingMysteryOrb: true,
+      clearMysteryOrbDwellStartTime: true,
     ));
   }
 
@@ -156,16 +189,52 @@ class GameCubit extends Cubit<GameState> {
 
   /// Generate letter nodes only for letters needed in this round
   /// Uses randomized grid placement (not QWERTY)
-  List<LetterNode> _generateLettersForRound(String category, String letter) {
+  /// Mystery orbs REPLACE actual letters (prioritizing vowels) - like Scrabble blanks
+  /// This forces players to use mystery orbs as wildcards to complete words
+  ({List<LetterNode> letters, List<MysteryOrb> mysteryOrbs}) _generateLettersAndMysteryOrbs(String category, String letter) {
     final neededLetters = _getLettersForRound(category, letter).toList();
     neededLetters.sort(); // Sort alphabetically for consistent IDs
 
-    final letters = <LetterNode>[];
+    // Identify letters to replace with mystery orbs (prioritize vowels)
+    // This creates jeopardy - players MUST use mystery blanks to complete words
+    // NEVER replace the starting letter - player must be able to start their word
+    final vowels = ['A', 'E', 'I', 'O', 'U'];
+    final lettersToReplace = <String>[];
 
-    // Grid configuration based on number of letters
-    final count = neededLetters.length;
-    final cols = count <= 9 ? 3 : (count <= 16 ? 4 : (count <= 25 ? 5 : 6));
-    final rows = (count / cols).ceil();
+    // First, try to replace vowels that exist in the needed letters
+    // Skip the starting letter even if it's a vowel
+    for (final vowel in vowels) {
+      if (vowel == letter) continue; // Never replace the starting letter!
+      if (neededLetters.contains(vowel) && lettersToReplace.length < _mysteryOrbCount) {
+        lettersToReplace.add(vowel);
+      }
+    }
+
+    // If we still need more, replace other letters (avoid the starting letter)
+    if (lettersToReplace.length < _mysteryOrbCount) {
+      final nonVowels = neededLetters.where((l) =>
+        !vowels.contains(l) && l != letter // Don't replace the starting letter
+      ).toList();
+      nonVowels.shuffle(_random);
+
+      for (final l in nonVowels) {
+        if (lettersToReplace.length >= _mysteryOrbCount) break;
+        lettersToReplace.add(l);
+      }
+    }
+
+    // Remove replaced letters from the needed letters list
+    final remainingLetters = neededLetters.where((l) => !lettersToReplace.contains(l)).toList();
+
+    final letters = <LetterNode>[];
+    final mysteryOrbs = <MysteryOrb>[];
+
+    // Total items stays the same (mystery orbs replace letters, not add to them)
+    final totalItems = neededLetters.length; // Same count as original
+
+    // Grid configuration based on total number of items
+    final cols = totalItems <= 9 ? 3 : (totalItems <= 16 ? 4 : (totalItems <= 25 ? 5 : 6));
+    final rows = (totalItems / cols).ceil();
 
     // Padding from edges
     const paddingX = 0.08;
@@ -183,11 +252,11 @@ class GameCubit extends Cubit<GameState> {
     final jitterX = cellWidth * 0.20;
     final jitterY = cellHeight * 0.20;
 
-    // Generate grid positions
+    // Generate grid positions for ALL items
     final gridPositions = <Offset>[];
     for (int row = 0; row < rows; row++) {
       for (int col = 0; col < cols; col++) {
-        if (gridPositions.length >= count) break;
+        if (gridPositions.length >= totalItems) break;
 
         // Calculate base position (center of cell)
         final baseX = paddingX + (col + 0.5) * cellWidth;
@@ -204,12 +273,12 @@ class GameCubit extends Cubit<GameState> {
       }
     }
 
-    // Shuffle positions for random letter placement
+    // Shuffle positions for random placement
     gridPositions.shuffle(_random);
 
-    // Create letter nodes
-    for (int i = 0; i < neededLetters.length; i++) {
-      final letterChar = neededLetters[i];
+    // Create letter nodes for remaining letters
+    int positionIndex = 0;
+    for (final letterChar in remainingLetters) {
       final points = _letterPoints[letterChar] ?? 1;
       // Use alphabetical index as ID for consistency
       final id = letterChar.codeUnitAt(0) - 'A'.codeUnitAt(0);
@@ -218,11 +287,26 @@ class GameCubit extends Cubit<GameState> {
         id: id,
         letter: letterChar,
         points: points,
-        position: gridPositions[i],
+        position: gridPositions[positionIndex],
       ));
+      positionIndex++;
     }
 
-    return letters;
+    // Create mystery orbs that REPLACE the removed letters
+    // Each orb tracks which letter it replaces (for word validation)
+    for (int i = 0; i < lettersToReplace.length; i++) {
+      if (positionIndex < gridPositions.length) {
+        mysteryOrbs.add(MysteryOrb(
+          id: 100 + i, // IDs 100+ to avoid conflict with letter IDs
+          position: gridPositions[positionIndex],
+          isActive: true,
+          replacedLetter: lettersToReplace[i], // Track which letter this blank represents
+        ));
+        positionIndex++;
+      }
+    }
+
+    return (letters: letters, mysteryOrbs: mysteryOrbs);
   }
 
   /// Get 5 random categories that have words for the letter
@@ -250,16 +334,6 @@ class GameCubit extends Cubit<GameState> {
     return weightedCategories.map((c) => c.name.toUpperCase()).toList();
   }
 
-  /// Get a random category that has words for the letter (fallback)
-  String? _getRandomCategoryForLetter(String letter) {
-    final validCategories = CategoryDictionary.categories.where((cat) {
-      return _dictionary.categoryHasWordsForLetter(cat, letter);
-    }).toList();
-
-    if (validCategories.isEmpty) return null;
-    return validCategories[_random.nextInt(validCategories.length)];
-  }
-
   /// Get remaining letters for the spinning wheel (A-Y, excluding X)
   /// Letters are weighted by difficulty - easier letters appear more often early in the game
   List<String> getRemainingLetters() {
@@ -276,7 +350,7 @@ class GameCubit extends Cubit<GameState> {
   }
 
   /// Get weighted remaining letters for wheel spin
-  /// Earlier rounds favor easier letters, later rounds are more random
+  /// Earlier rounds completely exclude tough letters, later rounds are more random
   List<String> getWeightedRemainingLetters() {
     final remaining = getRemainingLetters();
     if (remaining.isEmpty) return remaining;
@@ -284,11 +358,17 @@ class GameCubit extends Cubit<GameState> {
     final weightedList = <String>[];
     final currentRound = state.letterRound;
 
-    // Calculate difficulty threshold based on round
-    // Round 1-5: prefer difficulty 1-2
-    // Round 6-10: prefer difficulty 1-3
-    // Round 11-15: prefer difficulty 1-4
-    // Round 16+: all difficulties equal
+    // Determine which difficulty levels are ALLOWED (not just preferred)
+    // Round 1-5: Only difficulty 1-3 (exclude Q, Z, U, V, Y)
+    // Round 6-10: Only difficulty 1-4 (exclude Q, Z)
+    // Round 11+: All difficulties allowed
+    final maxAllowedDifficulty = switch (currentRound) {
+      <= 5 => 3,   // No U, V, Y, Q, Z
+      <= 10 => 4,  // No Q, Z
+      _ => 5,      // All letters
+    };
+
+    // Preferred difficulty for weighting (easier letters still get higher weight)
     final maxPreferredDifficulty = switch (currentRound) {
       <= 5 => 2,
       <= 10 => 3,
@@ -299,14 +379,18 @@ class GameCubit extends Cubit<GameState> {
     for (final letter in remaining) {
       final difficulty = _letterDifficulty[letter] ?? 3;
 
+      // Skip letters that are too difficult for current round
+      if (difficulty > maxAllowedDifficulty) {
+        continue;
+      }
+
       // Calculate weight: easier letters get more entries
-      // Weight = (maxPreferredDifficulty - difficulty + 1) clamped to 1-5
       int weight;
       if (difficulty <= maxPreferredDifficulty) {
         // Preferred difficulty range: higher weight for easier
         weight = (maxPreferredDifficulty - difficulty + 2).clamp(1, 5);
       } else {
-        // Above preferred difficulty: minimal weight (still possible)
+        // Above preferred but still allowed: minimal weight
         weight = 1;
       }
 
@@ -314,6 +398,12 @@ class GameCubit extends Cubit<GameState> {
       for (var i = 0; i < weight; i++) {
         weightedList.add(letter);
       }
+    }
+
+    // If all remaining letters were filtered out (late game edge case),
+    // fall back to returning whatever is left
+    if (weightedList.isEmpty && remaining.isNotEmpty) {
+      return remaining;
     }
 
     // Shuffle to randomize
@@ -390,7 +480,7 @@ class GameCubit extends Cubit<GameState> {
   // Outer radius: dwell-time selection (awareness zone)
   static const double _outerHitRadius = 0.08;
 
-  /// Start dragging from a position - check if it hits a letter
+  /// Start dragging from a position - check if it hits a letter or mystery orb
   /// If there's an existing selection (e.g., after pressing x2), continue from it
   void startDrag(Offset relativePosition) {
     // Reset all tracking state
@@ -403,25 +493,28 @@ class GameCubit extends Cubit<GameState> {
     final hasExistingSelection = state.selectedLetterIds.isNotEmpty;
 
     // For starting, use inner radius (must be intentional)
-    final hitNode = _findNodeAtPosition(relativePosition, _innerHitRadius);
+    // Check for both letters AND mystery orbs
+    final hit = _findSelectableAtPosition(relativePosition, _innerHitRadius);
 
     if (hasExistingSelection) {
-      // Continue from existing selection
-      if (hitNode != null) {
+      // Continue from existing selection - NOT a pure connection
+      // (user lifted finger and is now continuing)
+      if (hit != null) {
         final lastId = state.selectedLetterIds.last;
-        if (hitNode.id != lastId) {
-          // Hit a different letter - add to selection
-          final newSelection = [...state.selectedLetterIds, hitNode.id];
+        if (hit.id != lastId) {
+          // Hit a different letter/orb - use confirmation to add (handles orb effects)
           emit(state.copyWith(
             isDragging: true,
-            selectedLetterIds: newSelection,
             currentDragPosition: relativePosition,
+            isPureConnection: false, // Breaking pure connection by continuing after lift
           ));
+          _confirmSelection(hit.id, hit.letter, hit.isOrb, relativePosition);
         } else {
-          // Hit the same letter - just continue dragging
+          // Hit the same item - just continue dragging
           emit(state.copyWith(
             isDragging: true,
             currentDragPosition: relativePosition,
+            isPureConnection: false, // Breaking pure connection by continuing after lift
           ));
         }
       } else {
@@ -429,15 +522,16 @@ class GameCubit extends Cubit<GameState> {
         emit(state.copyWith(
           isDragging: true,
           currentDragPosition: relativePosition,
+          isPureConnection: false, // Breaking pure connection by continuing after lift
         ));
       }
     } else {
       // No existing selection - start fresh
-      if (hitNode != null) {
-        // Validate first letter in Alpha Quest mode
-        if (state.phase == GamePhase.playingRound && state.currentLetter != null) {
-          // First letter (after any committed word) should be valid prefix
-          final potentialWord = state.committedWord + hitNode.letter;
+      if (hit != null) {
+        // Validate first letter in Alpha Quest mode - but skip for mystery orbs
+        // Mystery orbs are wildcards and can start anywhere
+        if (!hit.isOrb && state.phase == GamePhase.playingRound && state.currentLetter != null) {
+          final potentialWord = state.committedWord + hit.letter;
           final isValidPath = _dictionary.isValidPrefix(
             potentialWord,
             state.category,
@@ -445,7 +539,6 @@ class GameCubit extends Cubit<GameState> {
           );
 
           if (!isValidPath) {
-            // Invalid starting letter - start dragging without selection
             emit(state.copyWith(
               isDragging: true,
               currentDragPosition: relativePosition,
@@ -454,12 +547,22 @@ class GameCubit extends Cubit<GameState> {
           }
         }
 
-        // Valid starting letter
+        // Valid starting letter/orb - add to selection and trigger orb effect if needed
+        // Mark as pure connection since we're starting fresh with a drag
         emit(state.copyWith(
           isDragging: true,
-          selectedLetterIds: [hitNode.id],
           currentDragPosition: relativePosition,
+          isPureConnection: true, // Starting a new drag = potential pure connection
         ));
+
+        // Handle mystery orb selection (triggers effect on first use)
+        if (hit.isOrb) {
+          _handleMysteryOrbFirstSelection(hit.id, relativePosition);
+        } else {
+          emit(state.copyWith(
+            selectedLetterIds: [hit.id],
+          ));
+        }
       } else {
         // Start dragging even without hitting a letter (allows drag-through)
         emit(state.copyWith(
@@ -467,6 +570,49 @@ class GameCubit extends Cubit<GameState> {
           currentDragPosition: relativePosition,
         ));
       }
+    }
+  }
+
+  /// Handle first selection of a mystery orb (triggers effect)
+  void _handleMysteryOrbFirstSelection(int orbId, Offset position) {
+    final orbIndex = state.mysteryOrbs.indexWhere((o) => o.id == orbId);
+    if (orbIndex < 0) return;
+
+    final orb = state.mysteryOrbs[orbIndex];
+
+    // Add orb to selection
+    final newSelection = [...state.selectedLetterIds, orbId];
+
+    // Check if this orb's effect has already been triggered
+    if (!orb.effectTriggered) {
+      // Mark orb as effect triggered
+      final updatedOrbs = state.mysteryOrbs.map((o) {
+        if (o.id == orbId) {
+          return o.copyWith(effectTriggered: true);
+        }
+        return o;
+      }).toList();
+
+      // Determine and apply mystery outcome
+      final outcome = _determineMysteryOutcome();
+
+      // Play mystery activate sound
+      AudioService.instance.play(GameSound.mysteryActivate);
+      HapticService.instance.heavy();
+
+      emit(state.copyWith(
+        selectedLetterIds: newSelection,
+        mysteryOrbs: updatedOrbs,
+        lastMysteryOutcome: outcome,
+      ));
+
+      // Apply the outcome effects
+      _applyMysteryOutcomeEffects(outcome);
+    } else {
+      // Already triggered - just add to selection
+      emit(state.copyWith(
+        selectedLetterIds: newSelection,
+      ));
     }
   }
 
@@ -488,7 +634,8 @@ class GameCubit extends Cubit<GameState> {
     return speed;
   }
 
-  /// Update drag position and check for new letter hits with sticky/magnetic behavior
+  /// Update drag position and check for new letter/orb hits with sticky/magnetic behavior
+  /// Mystery orbs are now selectable as part of the word (they act as wildcards)
   void updateDrag(Offset relativePosition) {
     if (!state.isDragging) return;
 
@@ -502,11 +649,9 @@ class GameCubit extends Cubit<GameState> {
     _lastDragPosition = relativePosition;
     _lastDragTime = now;
 
-    // First check inner radius (immediate selection - always triggers)
-    final innerHitNode = _findNodeAtPosition(relativePosition, _innerHitRadius);
-
-    // Then check outer radius (dwell-time selection)
-    final outerHitNode = _findNodeAtPosition(relativePosition, _outerHitRadius);
+    // Check for letters AND mystery orbs (both are selectable now)
+    final innerHit = _findSelectableAtPosition(relativePosition, _innerHitRadius);
+    final outerHit = _findSelectableAtPosition(relativePosition, _outerHitRadius);
 
     final lastSelectedId = state.selectedLetterIds.isNotEmpty
         ? state.selectedLetterIds.last
@@ -514,51 +659,76 @@ class GameCubit extends Cubit<GameState> {
 
     // Case 1: Direct hit on inner radius - but still check velocity
     // Only immediate selection if moving slowly (not passing through)
-    if (innerHitNode != null && innerHitNode.id != lastSelectedId) {
+    if (innerHit != null && innerHit.id != lastSelectedId) {
       if (!isPassingThrough) {
-        _confirmLetterSelection(innerHitNode.id, relativePosition);
+        _confirmSelection(innerHit.id, innerHit.letter, innerHit.isOrb, relativePosition);
         return;
       }
       // If passing through inner radius, treat same as outer - need to dwell
     }
 
     // Case 2: Within outer radius - only track dwell if NOT passing through quickly
-    if (outerHitNode != null && outerHitNode.id != lastSelectedId) {
+    if (outerHit != null && outerHit.id != lastSelectedId) {
       if (isPassingThrough) {
         // Moving too fast - user is passing through, don't select
-        // Reset pending if it was this letter
-        if (_pendingLetterId == outerHitNode.id) {
+        // Reset pending if it was this item
+        if (_pendingLetterId == outerHit.id) {
           _pendingLetterId = null;
           _pendingLetterEnteredAt = null;
         }
         emit(state.copyWith(
           currentDragPosition: relativePosition,
           approachingLetterIds: [], // Clear approaching when passing through
+          clearPendingMysteryOrb: true,
+          clearMysteryOrbDwellStartTime: true,
         ));
         return;
       }
 
       // Moving slowly enough - check dwell time
-      if (_pendingLetterId == outerHitNode.id) {
-        // Same letter as pending - check if dwell time elapsed
+      if (_pendingLetterId == outerHit.id) {
+        // Same item as pending - check if dwell time elapsed
         final elapsed = now.difference(_pendingLetterEnteredAt!);
         if (elapsed >= _dwellTime) {
-          _confirmLetterSelection(outerHitNode.id, relativePosition);
+          _confirmSelection(outerHit.id, outerHit.letter, outerHit.isOrb, relativePosition);
         } else {
           // Still waiting - show approaching state
-          emit(state.copyWith(
-            currentDragPosition: relativePosition,
-            approachingLetterIds: [outerHitNode.id],
-          ));
+          // For orbs, also track orb dwell separately for visual feedback
+          if (outerHit.isOrb) {
+            emit(state.copyWith(
+              currentDragPosition: relativePosition,
+              approachingLetterIds: [], // Don't highlight orbs in letter list
+              pendingMysteryOrbId: outerHit.id,
+              mysteryOrbDwellStartTime: state.mysteryOrbDwellStartTime ?? now,
+            ));
+          } else {
+            emit(state.copyWith(
+              currentDragPosition: relativePosition,
+              approachingLetterIds: [outerHit.id],
+              clearPendingMysteryOrb: true,
+              clearMysteryOrbDwellStartTime: true,
+            ));
+          }
         }
       } else {
-        // New letter entered outer zone - start tracking
-        _pendingLetterId = outerHitNode.id;
+        // New item entered outer zone - start tracking
+        _pendingLetterId = outerHit.id;
         _pendingLetterEnteredAt = now;
-        emit(state.copyWith(
-          currentDragPosition: relativePosition,
-          approachingLetterIds: [outerHitNode.id],
-        ));
+        if (outerHit.isOrb) {
+          emit(state.copyWith(
+            currentDragPosition: relativePosition,
+            approachingLetterIds: [],
+            pendingMysteryOrbId: outerHit.id,
+            mysteryOrbDwellStartTime: now,
+          ));
+        } else {
+          emit(state.copyWith(
+            currentDragPosition: relativePosition,
+            approachingLetterIds: [outerHit.id],
+            clearPendingMysteryOrb: true,
+            clearMysteryOrbDwellStartTime: true,
+          ));
+        }
       }
       return;
     }
@@ -569,21 +739,26 @@ class GameCubit extends Cubit<GameState> {
     emit(state.copyWith(
       currentDragPosition: relativePosition,
       approachingLetterIds: [], // Clear approaching when outside
+      clearPendingMysteryOrb: true,
+      clearMysteryOrbDwellStartTime: true,
     ));
   }
 
-  /// Confirm selection of a letter - only if it could lead to a valid word
-  void _confirmLetterSelection(int letterId, Offset position) {
+  /// Confirm selection of a letter OR mystery orb
+  /// Mystery orbs are TRUE WILDCARDS - always connectable, validation at submit time
+  void _confirmSelection(int id, String letter, bool isOrb, Offset position) {
     _pendingLetterId = null;
     _pendingLetterEnteredAt = null;
 
-    // Only validate in Alpha Quest playing mode
-    if (state.phase == GamePhase.playingRound && state.currentLetter != null) {
-      // Build the potential new word with this letter
-      final newLetter = state.letters.firstWhere((l) => l.id == letterId).letter;
-      final potentialWord = state.committedWord + state.currentSelection + newLetter;
+    // Skip ALL prefix validation if:
+    // 1. This is a mystery orb, OR
+    // 2. Selection already contains a wildcard (can't validate patterns mid-word)
+    final hasWildcard = state.currentSelection.contains(GameState.wildcardChar);
+    final shouldSkipValidation = isOrb || hasWildcard;
 
-      // Check if this prefix could lead to a valid word
+    if (!shouldSkipValidation && state.phase == GamePhase.playingRound && state.currentLetter != null) {
+      final potentialWord = state.committedWord + state.currentSelection + letter;
+
       final isValidPath = _dictionary.isValidPrefix(
         potentialWord,
         state.category,
@@ -591,32 +766,145 @@ class GameCubit extends Cubit<GameState> {
       );
 
       if (!isValidPath) {
-        // Invalid path - reject the connection silently
-        // Just update drag position without adding letter
-        emit(state.copyWith(currentDragPosition: position));
+        emit(state.copyWith(
+          currentDragPosition: position,
+          clearPendingMysteryOrb: true,
+          clearMysteryOrbDwellStartTime: true,
+        ));
         return;
       }
     }
 
-    // Valid connection - add the letter
+    // Valid connection - add the item
     AudioService.instance.play(GameSound.letterSelect);
     HapticService.instance.medium();
 
-    final newSelection = [...state.selectedLetterIds, letterId];
+    final newSelection = [...state.selectedLetterIds, id];
+
+    // If it's a mystery orb being selected, trigger its effect (only if not already triggered)
+    if (isOrb) {
+      final orbIndex = state.mysteryOrbs.indexWhere((o) => o.id == id);
+      if (orbIndex >= 0) {
+        final orb = state.mysteryOrbs[orbIndex];
+
+        // Check if this orb's effect has already been triggered
+        if (!orb.effectTriggered) {
+          // Mark orb as effect triggered (but still active for word building)
+          final updatedOrbs = state.mysteryOrbs.map((o) {
+            if (o.id == id) {
+              return o.copyWith(effectTriggered: true);
+            }
+            return o;
+          }).toList();
+
+          // Determine and apply mystery outcome
+          final outcome = _determineMysteryOutcome();
+
+          // Play mystery activate sound
+          AudioService.instance.play(GameSound.mysteryActivate);
+          HapticService.instance.heavy();
+
+          emit(state.copyWith(
+            selectedLetterIds: newSelection,
+            currentDragPosition: position,
+            approachingLetterIds: [],
+            mysteryOrbs: updatedOrbs,
+            clearPendingMysteryOrb: true,
+            clearMysteryOrbDwellStartTime: true,
+            lastMysteryOutcome: outcome,
+          ));
+
+          // Apply the outcome effects (delayed to not interrupt selection)
+          _applyMysteryOutcomeEffects(outcome);
+          return;
+        }
+      }
+    }
+
     emit(state.copyWith(
       selectedLetterIds: newSelection,
       currentDragPosition: position,
-      approachingLetterIds: [], // Clear approaching - letter is now selected
+      approachingLetterIds: [],
+      clearPendingMysteryOrb: true,
+      clearMysteryOrbDwellStartTime: true,
     ));
   }
 
+  /// Apply mystery outcome effects (without updating orb list - already done)
+  void _applyMysteryOutcomeEffects(MysteryOutcome outcome) {
+    switch (outcome) {
+      case MysteryOutcome.timeBonus:
+        // +10 seconds
+        AudioService.instance.play(GameSound.mysteryReward);
+        emit(state.copyWith(
+          timeRemaining: state.timeRemaining + 10,
+          consecutivePenalties: 0,
+        ));
+        break;
+
+      case MysteryOutcome.scoreMultiplier:
+        // 1.5x on next word
+        AudioService.instance.play(GameSound.mysteryReward);
+        HapticService.instance.doubleTap();
+        emit(state.copyWith(
+          scoreMultiplierActive: true,
+          consecutivePenalties: 0,
+        ));
+        break;
+
+      case MysteryOutcome.freeHint:
+        // Award a free hint
+        AudioService.instance.play(GameSound.mysteryReward);
+        emit(state.copyWith(
+          hintsRemaining: state.hintsRemaining + 1,
+          consecutivePenalties: 0,
+        ));
+        break;
+
+      case MysteryOutcome.timePenalty:
+        // -5 seconds
+        AudioService.instance.play(GameSound.mysteryPenalty);
+        HapticService.instance.error();
+        final newTime = (state.timeRemaining - 5).clamp(0, 999);
+        emit(state.copyWith(
+          timeRemaining: newTime,
+          consecutivePenalties: state.consecutivePenalties + 1,
+        ));
+        if (newTime <= 0) {
+          _endGame(isWinner: false);
+        }
+        break;
+
+      case MysteryOutcome.scrambleLetters:
+        // Scramble letter positions
+        AudioService.instance.play(GameSound.mysteryPenalty);
+        HapticService.instance.warning();
+        final scrambledLetters = _scrambleLetterPositions();
+        emit(state.copyWith(
+          letters: scrambledLetters,
+          consecutivePenalties: state.consecutivePenalties + 1,
+        ));
+        break;
+    }
+
+    // Clear the outcome feedback after delay
+    Future.delayed(const Duration(seconds: 2), () {
+      if (isClosed) return;
+      emit(state.copyWith(clearLastMysteryOutcome: true));
+    });
+  }
+
   /// End dragging - keep selection intact so user can tap GO or DEL
+  /// isPureConnection is preserved - it will be checked at submit time
   void endDrag() {
     // Reset all tracking state
     _pendingLetterId = null;
     _pendingLetterEnteredAt = null;
     _lastDragPosition = null;
     _lastDragTime = null;
+
+    // DON'T modify isPureConnection here - let it carry through to submit
+    // The user may have dragged all letters in one motion and is now submitting
     emit(state.copyWith(
       isDragging: false,
       clearDragPosition: true,
@@ -624,16 +912,30 @@ class GameCubit extends Cubit<GameState> {
     ));
   }
 
-  /// Find a letter node at the given relative position within specified radius
-  LetterNode? _findNodeAtPosition(Offset position, double radius) {
+  /// Find a letter node OR mystery orb at the given position
+  /// Returns (letterId, isOrb) where letterId is the id and isOrb indicates if it's a mystery orb
+  ({int id, bool isOrb, String letter, Offset position})? _findSelectableAtPosition(Offset position, double radius) {
+    // First check letters
     for (final node in state.letters) {
       final dx = (node.position.dx - position.dx).abs();
       final dy = (node.position.dy - position.dy).abs();
       final distanceSquared = (dx * dx + dy * dy);
       if (distanceSquared < radius * radius) {
-        return node;
+        return (id: node.id, isOrb: false, letter: node.letter, position: node.position);
       }
     }
+
+    // Then check mystery orbs (they act as their replacedLetter)
+    for (final orb in state.mysteryOrbs) {
+      if (!orb.isActive) continue;
+      final dx = (orb.position.dx - position.dx).abs();
+      final dy = (orb.position.dy - position.dy).abs();
+      final distanceSquared = (dx * dx + dy * dy);
+      if (distanceSquared < radius * radius) {
+        return (id: orb.id, isOrb: true, letter: orb.replacedLetter, position: orb.position);
+      }
+    }
+
     return null;
   }
 
@@ -642,13 +944,20 @@ class GameCubit extends Cubit<GameState> {
     if (state.selectedLetterIds.isNotEmpty &&
         state.selectedLetterIds.last == letterId) {
       final newSelection = List<int>.from(state.selectedLetterIds)..removeLast();
-      emit(state.copyWith(selectedLetterIds: newSelection));
+      emit(state.copyWith(
+        selectedLetterIds: newSelection,
+        isPureConnection: false, // Tapping breaks pure connection
+      ));
       return;
     }
 
     // Add to selection (allow duplicates, just not consecutive)
+    // Tapping letters breaks pure connection (only dragging maintains it)
     final newSelection = [...state.selectedLetterIds, letterId];
-    emit(state.copyWith(selectedLetterIds: newSelection));
+    emit(state.copyWith(
+      selectedLetterIds: newSelection,
+      isPureConnection: false, // Tapping breaks pure connection
+    ));
   }
 
   void clearSelection() {
@@ -658,6 +967,8 @@ class GameCubit extends Cubit<GameState> {
       clearDragPosition: true,
       spaceUsageCount: 0, // Reset bonus counts
       repeatUsageCount: 0,
+      isPureConnection: false, // Reset pure connection tracking
+      showConnectionAnimation: false,
     ));
   }
 
@@ -772,25 +1083,36 @@ class GameCubit extends Cubit<GameState> {
   void submitWord() {
     if (state.currentWord.length < 2) return;
 
-    final word = state.currentWord;
+    final pattern = state.currentWord; // May contain '*' wildcards
 
     // Alpha Quest validation
     if (state.phase == GamePhase.playingRound && state.currentLetter != null) {
-      final isValid = _dictionary.isValidWord(
-        word,
-        state.category,
-        state.currentLetter!,
-      );
-
-      if (isValid) {
-        _handleCorrectAnswer(word);
+      // Check if pattern contains wildcards (mystery orbs)
+      if (pattern.contains(GameState.wildcardChar)) {
+        // Find a matching word where wildcards can be any letter
+        final matchedWord = _findMatchingWord(pattern, state.category, state.currentLetter!);
+        if (matchedWord != null) {
+          _handleCorrectAnswer(matchedWord); // Use the actual matched word
+        } else {
+          _handleWrongAnswer();
+        }
       } else {
-        _handleWrongAnswer();
+        // No wildcards - direct validation
+        final isValid = _dictionary.isValidWord(
+          pattern,
+          state.category,
+          state.currentLetter!,
+        );
+
+        if (isValid) {
+          _handleCorrectAnswer(pattern);
+        } else {
+          _handleWrongAnswer();
+        }
       }
     } else {
       // Non-Alpha Quest mode (original behavior)
-      final newWords = [...state.completedWords, word];
-      // Filter out nulls (spaces) and sum points
+      final newWords = [...state.completedWords, pattern];
       final wordScore = state.selectedLetters
           .whereType<LetterNode>()
           .fold<int>(0, (sum, l) => sum + l.points);
@@ -801,6 +1123,40 @@ class GameCubit extends Cubit<GameState> {
         score: state.score + wordScore,
       ));
     }
+  }
+
+  /// Find a valid word that matches the pattern with wildcards
+  /// Returns the matched word or null if no match
+  String? _findMatchingWord(String pattern, String category, String startLetter) {
+    final validWords = _dictionary.getWordsForCategoryAndLetter(category, startLetter);
+    final upperPattern = pattern.toUpperCase();
+
+    for (final word in validWords) {
+      final upperWord = word.toUpperCase().replaceAll(' ', '');
+      final patternNoSpaces = upperPattern.replaceAll(' ', '');
+
+      if (_matchesPattern(upperWord, patternNoSpaces)) {
+        return word;
+      }
+    }
+    return null;
+  }
+
+  /// Check if a word matches a pattern with '*' wildcards
+  bool _matchesPattern(String word, String pattern) {
+    if (word.length != pattern.length) return false;
+
+    for (int i = 0; i < pattern.length; i++) {
+      final patternChar = pattern[i];
+      final wordChar = word[i];
+
+      // Wildcard matches any character
+      if (patternChar == GameState.wildcardChar) continue;
+
+      // Non-wildcard must match exactly
+      if (patternChar != wordChar) return false;
+    }
+    return true;
   }
 
   /// Calculate score for a word (Scrabble-style + bonuses)
@@ -842,13 +1198,26 @@ class GameCubit extends Cubit<GameState> {
     AudioService.instance.play(GameSound.wordCorrect);
     HapticService.instance.success();
 
-    final wordScore = _calculateWordScore(word);
+    var wordScore = _calculateWordScore(word);
+
+    // Apply score multiplier if active
+    if (state.scoreMultiplierActive) {
+      wordScore = (wordScore * 1.5).round();
+    }
+
     final newScore = state.score + wordScore;
     final newWords = [...state.completedWords, word];
     final nextCategoryIndex = state.categoryIndex + 1;
 
     // Time bonus: +10 seconds per space used (multi-word answers)
-    final timeBonus = state.spaceUsageCount * 10;
+    var timeBonus = state.spaceUsageCount * 10;
+
+    // Pure connection bonus: +5 seconds for completing word in single drag
+    final wasPureConnection = state.isPureConnection;
+    if (wasPureConnection) {
+      timeBonus += 5;
+    }
+
     final newTime = state.timeRemaining + timeBonus;
 
     // Extra haptic reward for time bonus
@@ -857,12 +1226,16 @@ class GameCubit extends Cubit<GameState> {
     }
 
     // First emit celebration state - keep letters visible for animation
+    // Show connection animation if this was a pure connection
     emit(state.copyWith(
       score: newScore,
       timeRemaining: newTime,
       lastAnswerCorrect: true,
       lastTimeBonus: timeBonus > 0 ? timeBonus : null,
       clearLastTimeBonus: timeBonus == 0,
+      scoreMultiplierActive: false, // Consume the multiplier
+      showConnectionAnimation: wasPureConnection, // Trigger path animation
+      isPureConnection: false, // Reset for next word
     ));
 
     // Delay transition to allow celebration animation to play
@@ -889,6 +1262,7 @@ class GameCubit extends Cubit<GameState> {
           phase: GamePhase.categoryReveal, // Show jackpot for next category
           spaceUsageCount: 0, // Reset bonus counts
           repeatUsageCount: 0,
+          showConnectionAnimation: false, // Clear animation flag for next word
         ));
       }
     });
@@ -926,6 +1300,7 @@ class GameCubit extends Cubit<GameState> {
       spaceUsageCount: 0,
       repeatUsageCount: 0,
       hintsRemaining: state.hintsRemaining + 1, // Award extra hint for completing letter
+      showConnectionAnimation: false, // Clear animation flag
     ));
   }
 
@@ -968,6 +1343,7 @@ class GameCubit extends Cubit<GameState> {
       lastAnswerCorrect: false,
       // Don't reset spaceUsageCount - banked spaces are still valid
       repeatUsageCount: 0, // Only reset repeat count for current selection
+      isPureConnection: false, // Reset for next attempt
     ));
 
     if (newTime <= 0) {
@@ -1035,7 +1411,101 @@ class GameCubit extends Cubit<GameState> {
       clearLastAnswerCorrect: true,
       hintsRemaining: 3, // Reset hints
       clearHintWord: true,
+      // Reset mystery orb state
+      mysteryOrbs: [],
+      consecutivePenalties: 0,
+      scoreMultiplierActive: false,
+      clearLastMysteryOutcome: true,
+      clearPendingMysteryOrb: true,
+      clearMysteryOrbDwellStartTime: true,
     ));
+  }
+
+  // ============================================
+  // MYSTERY ORB METHODS
+  // ============================================
+
+  /// Determine mystery outcome using probability weights and pity system
+  MysteryOutcome _determineMysteryOutcome() {
+    // Pity system: after 2 consecutive penalties, guarantee a reward
+    if (state.consecutivePenalties >= 2) {
+      // Force a reward
+      final rewards = [
+        MysteryOutcome.timeBonus,
+        MysteryOutcome.scoreMultiplier,
+        MysteryOutcome.freeHint,
+      ];
+      final rewardWeights = [40, 15, 10]; // Same relative weights
+      final totalWeight = rewardWeights.reduce((a, b) => a + b);
+      var roll = _random.nextInt(totalWeight);
+
+      for (int i = 0; i < rewards.length; i++) {
+        roll -= rewardWeights[i];
+        if (roll < 0) return rewards[i];
+      }
+      return MysteryOutcome.timeBonus;
+    }
+
+    // Progressive difficulty: early rounds favor rewards more
+    // Base: 65/35 reward/penalty
+    // Round 1-5: 75/25
+    // Round 6-10: 70/30
+    // Round 11+: 65/35
+    int rewardBonus = 0;
+    if (state.letterRound <= 5) {
+      rewardBonus = 10; // +10% to rewards
+    } else if (state.letterRound <= 10) {
+      rewardBonus = 5; // +5% to rewards
+    }
+
+    // Calculate total weight and roll
+    int totalWeight = 0;
+    for (final entry in _mysteryOutcomeProbabilities.entries) {
+      int weight = entry.value;
+      // Apply reward bonus
+      if (_isRewardOutcome(entry.key)) {
+        weight = (weight * (100 + rewardBonus) ~/ 100);
+      }
+      totalWeight += weight;
+    }
+
+    var roll = _random.nextInt(totalWeight);
+
+    for (final entry in _mysteryOutcomeProbabilities.entries) {
+      int weight = entry.value;
+      if (_isRewardOutcome(entry.key)) {
+        weight = (weight * (100 + rewardBonus) ~/ 100);
+      }
+      roll -= weight;
+      if (roll < 0) return entry.key;
+    }
+
+    return MysteryOutcome.timeBonus; // Fallback
+  }
+
+  /// Check if outcome is a reward (vs penalty)
+  bool _isRewardOutcome(MysteryOutcome outcome) {
+    return outcome == MysteryOutcome.timeBonus ||
+        outcome == MysteryOutcome.scoreMultiplier ||
+        outcome == MysteryOutcome.freeHint;
+  }
+
+  /// Scramble letter positions (keep same letters, different positions)
+  List<LetterNode> _scrambleLetterPositions() {
+    final positions = state.letters.map((l) => l.position).toList();
+    positions.shuffle(_random);
+
+    final scrambled = <LetterNode>[];
+    for (int i = 0; i < state.letters.length; i++) {
+      final original = state.letters[i];
+      scrambled.add(LetterNode(
+        id: original.id,
+        letter: original.letter,
+        points: original.points,
+        position: positions[i],
+      ));
+    }
+    return scrambled;
   }
 
   @override

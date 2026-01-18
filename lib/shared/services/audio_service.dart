@@ -13,6 +13,9 @@ enum GameSound {
   timeWarning,
   jackpotReveal,
   roundComplete,
+  mysteryReward,
+  mysteryPenalty,
+  mysteryActivate,
 }
 
 /// Audio service singleton - NO-OP stub

@@ -24,13 +24,19 @@ class GameBody extends StatefulWidget {
   State<GameBody> createState() => _GameBodyState();
 }
 
-class _GameBodyState extends State<GameBody> with SingleTickerProviderStateMixin {
+class _GameBodyState extends State<GameBody> with TickerProviderStateMixin {
   // Animation for floating time bonus
   late AnimationController _bonusAnimController;
   late Animation<double> _bonusOpacity;
   late Animation<double> _bonusOffset;
   late Animation<double> _bonusScale;
   int? _displayedBonus;
+
+  // Animation for mystery outcome
+  late AnimationController _mysteryAnimController;
+  late Animation<double> _mysteryOpacity;
+  late Animation<double> _mysteryScale;
+  MysteryOutcome? _displayedMysteryOutcome;
 
   @override
   void initState() {
@@ -55,11 +61,30 @@ class _GameBodyState extends State<GameBody> with SingleTickerProviderStateMixin
       TweenSequenceItem(tween: Tween(begin: 1.3, end: 1.0), weight: 20),
       TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.0), weight: 60),
     ]).animate(_bonusAnimController);
+
+    // Mystery outcome animation
+    _mysteryAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    );
+
+    _mysteryOpacity = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0), weight: 15),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.0), weight: 55),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0), weight: 30),
+    ]).animate(_mysteryAnimController);
+
+    _mysteryScale = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0.3, end: 1.2), weight: 20),
+      TweenSequenceItem(tween: Tween(begin: 1.2, end: 1.0), weight: 15),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.0), weight: 65),
+    ]).animate(_mysteryAnimController);
   }
 
   @override
   void dispose() {
     _bonusAnimController.dispose();
+    _mysteryAnimController.dispose();
     super.dispose();
   }
 
@@ -70,16 +95,74 @@ class _GameBodyState extends State<GameBody> with SingleTickerProviderStateMixin
     _bonusAnimController.forward(from: 0);
   }
 
+  void _showMysteryOutcome(MysteryOutcome outcome) {
+    setState(() {
+      _displayedMysteryOutcome = outcome;
+    });
+    _mysteryAnimController.forward(from: 0);
+  }
+
+  /// Get display text for mystery outcome
+  String _getMysteryOutcomeText(MysteryOutcome outcome) {
+    switch (outcome) {
+      case MysteryOutcome.timeBonus:
+        return '+10s';
+      case MysteryOutcome.scoreMultiplier:
+        return '1.5x NEXT';
+      case MysteryOutcome.freeHint:
+        return '+1 HINT';
+      case MysteryOutcome.timePenalty:
+        return '-5s';
+      case MysteryOutcome.scrambleLetters:
+        return 'SCRAMBLE!';
+    }
+  }
+
+  /// Get icon for mystery outcome
+  IconData _getMysteryOutcomeIcon(MysteryOutcome outcome) {
+    switch (outcome) {
+      case MysteryOutcome.timeBonus:
+        return Icons.timer;
+      case MysteryOutcome.scoreMultiplier:
+        return Icons.star;
+      case MysteryOutcome.freeHint:
+        return Icons.lightbulb;
+      case MysteryOutcome.timePenalty:
+        return Icons.timer_off;
+      case MysteryOutcome.scrambleLetters:
+        return Icons.shuffle;
+    }
+  }
+
+  /// Check if outcome is a reward (vs penalty)
+  bool _isRewardOutcome(MysteryOutcome outcome) {
+    return outcome == MysteryOutcome.timeBonus ||
+        outcome == MysteryOutcome.scoreMultiplier ||
+        outcome == MysteryOutcome.freeHint;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return BlocListener<GameCubit, GameState>(
-      listenWhen: (previous, current) =>
-          previous.lastTimeBonus != current.lastTimeBonus &&
-          current.lastTimeBonus != null &&
-          current.lastTimeBonus! > 0,
-      listener: (context, state) {
-        _showTimeBonus(state.lastTimeBonus!);
-      },
+    return MultiBlocListener(
+      listeners: [
+        BlocListener<GameCubit, GameState>(
+          listenWhen: (previous, current) =>
+              previous.lastTimeBonus != current.lastTimeBonus &&
+              current.lastTimeBonus != null &&
+              current.lastTimeBonus! > 0,
+          listener: (context, state) {
+            _showTimeBonus(state.lastTimeBonus!);
+          },
+        ),
+        BlocListener<GameCubit, GameState>(
+          listenWhen: (previous, current) =>
+              previous.lastMysteryOutcome != current.lastMysteryOutcome &&
+              current.lastMysteryOutcome != null,
+          listener: (context, state) {
+            _showMysteryOutcome(state.lastMysteryOutcome!);
+          },
+        ),
+      ],
       child: BlocBuilder<GameCubit, GameState>(
         builder: (context, state) {
           return GradientBackground(
@@ -151,6 +234,80 @@ class _GameBodyState extends State<GameBody> with SingleTickerProviderStateMixin
                                       ),
                                     ],
                                   ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
+                // Mystery outcome feedback overlay
+                if (_displayedMysteryOutcome != null)
+                  Positioned(
+                    top: MediaQuery.of(context).size.height * 0.35,
+                    left: 0,
+                    right: 0,
+                    child: AnimatedBuilder(
+                      animation: _mysteryAnimController,
+                      builder: (context, child) {
+                        final isReward = _isRewardOutcome(_displayedMysteryOutcome!);
+                        final color = isReward
+                            ? AppColors.accentGold
+                            : AppColors.accentPink;
+                        final bgColor = isReward
+                            ? const Color(0xFF9C27B0) // Purple
+                            : const Color(0xFF880E4F); // Dark pink
+
+                        return Opacity(
+                          opacity: _mysteryOpacity.value,
+                          child: Transform.scale(
+                            scale: _mysteryScale.value,
+                            child: Center(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 32,
+                                  vertical: 20,
+                                ),
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      bgColor,
+                                      bgColor.withAlpha(220),
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: color,
+                                    width: 3,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: color.withAlpha(150),
+                                      blurRadius: 25,
+                                      spreadRadius: 8,
+                                    ),
+                                  ],
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      _getMysteryOutcomeIcon(_displayedMysteryOutcome!),
+                                      color: color,
+                                      size: 40,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      _getMysteryOutcomeText(_displayedMysteryOutcome!),
+                                      style: GoogleFonts.orbitron(
+                                        color: color,
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
@@ -236,6 +393,33 @@ class _GameBodyState extends State<GameBody> with SingleTickerProviderStateMixin
                 'START',
                 style: GoogleFonts.orbitron(
                   color: AppColors.black,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Cancel button
+          GestureDetector(
+            onTap: () => Navigator.of(context).pop(),
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 48,
+                vertical: 16,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.white.withAlpha(20),
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(
+                  color: Colors.white.withAlpha(100),
+                  width: 2,
+                ),
+              ),
+              child: Text(
+                'CANCEL',
+                style: GoogleFonts.orbitron(
+                  color: Colors.white,
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
                 ),
@@ -498,6 +682,12 @@ class _GameBodyState extends State<GameBody> with SingleTickerProviderStateMixin
               hintLetterIds: state.hintLetterIds,
               hintAnimationIndex: state.hintAnimationIndex,
               approachingLetterIds: state.approachingLetterIds,
+              // Mystery orb state
+              mysteryOrbs: state.mysteryOrbs,
+              pendingMysteryOrbId: state.pendingMysteryOrbId,
+              mysteryOrbDwellStartTime: state.mysteryOrbDwellStartTime,
+              // Pure connection celebration
+              showConnectionAnimation: state.showConnectionAnimation,
               onDragStart: (pos) {
                 context.read<GameCubit>().startDrag(pos);
               },

@@ -5,4 +5,5 @@ export 'constellation_line.dart';
 export 'game_button.dart';
 export 'gradient_background.dart';
 export 'letter_bubble.dart';
+export 'mystery_orb.dart';
 export 'star_decoration.dart';

@@ -401,6 +401,7 @@ class _AlphaQuestBodyState extends State<AlphaQuestBody> {
             ),
           ),
           const SizedBox(height: 48),
+          // Start button
           GestureDetector(
             onTap: () {
               context.read<AlphaQuestCubit>().startGame();
@@ -427,6 +428,35 @@ class _AlphaQuestBodyState extends State<AlphaQuestBody> {
                 'START',
                 style: TextStyle(
                   color: AppColors.black,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Cancel button
+          GestureDetector(
+            onTap: () {
+              Navigator.of(context).pop();
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 48,
+                vertical: 16,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.white.withAlpha(20),
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(
+                  color: Colors.white.withAlpha(100),
+                  width: 2,
+                ),
+              ),
+              child: const Text(
+                'CANCEL',
+                style: TextStyle(
+                  color: Colors.white,
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
                 ),

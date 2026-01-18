@@ -14,6 +14,59 @@ class LetterNode {
   });
 }
 
+/// Types of mystery orb outcomes
+enum MysteryOutcome {
+  /// +10 seconds time bonus (40% of rewards)
+  timeBonus,
+  /// 1.5x score multiplier for next word (15% of rewards)
+  scoreMultiplier,
+  /// Reveal a hint for free (10% of rewards)
+  freeHint,
+  /// -5 seconds time penalty (25% of penalties)
+  timePenalty,
+  /// Scramble letter positions (10% of penalties)
+  scrambleLetters,
+}
+
+/// Model representing a mystery orb in the constellation
+/// Acts as a wildcard (blank) that can substitute for any letter
+class MysteryOrb {
+  final int id;
+  final Offset position; // Relative position (0.0-1.0)
+  final bool isActive; // Whether the orb is visible and can be activated
+  final DateTime? activatedAt; // When it was last activated
+  final String replacedLetter; // The letter this blank replaces (for validation)
+  final bool effectTriggered; // Whether the reward/penalty effect was already triggered
+
+  const MysteryOrb({
+    required this.id,
+    required this.position,
+    this.isActive = true,
+    this.activatedAt,
+    this.replacedLetter = '', // Empty means it can be any letter
+    this.effectTriggered = false,
+  });
+
+  MysteryOrb copyWith({
+    int? id,
+    Offset? position,
+    bool? isActive,
+    DateTime? activatedAt,
+    bool clearActivatedAt = false,
+    String? replacedLetter,
+    bool? effectTriggered,
+  }) {
+    return MysteryOrb(
+      id: id ?? this.id,
+      position: position ?? this.position,
+      isActive: isActive ?? this.isActive,
+      activatedAt: clearActivatedAt ? null : (activatedAt ?? this.activatedAt),
+      replacedLetter: replacedLetter ?? this.replacedLetter,
+      effectTriggered: effectTriggered ?? this.effectTriggered,
+    );
+  }
+}
+
 /// Game phase for Alpha Quest mode
 enum GamePhase {
   /// Initial state - show start screen
@@ -67,6 +120,16 @@ class GameState extends Equatable {
     this.hintAnimationIndex = 0, // Current index in hint animation sequence
     // Predictive highlighting (letters in drag direction)
     this.approachingLetterIds = const [],
+    // Pure connection tracking - true if word built in single drag
+    this.isPureConnection = false,
+    this.showConnectionAnimation = false,
+    // Mystery orb system
+    this.mysteryOrbs = const [],
+    this.consecutivePenalties = 0, // Pity system: reset when reward given
+    this.scoreMultiplierActive = false, // 1.5x multiplier for next word
+    this.lastMysteryOutcome, // For animation feedback
+    this.pendingMysteryOrbId, // Orb being hovered over
+    this.mysteryOrbDwellStartTime, // When dwell started on mystery orb
   });
 
   /// Special ID for space character in selectedLetterIds
@@ -115,6 +178,18 @@ class GameState extends Equatable {
   // Predictive highlighting - letters in the direction user is dragging
   final List<int> approachingLetterIds;
 
+  // Pure connection tracking - rewards continuous drag word building
+  final bool isPureConnection; // True if current word built in single drag
+  final bool showConnectionAnimation; // Trigger celebration animation for path
+
+  // Mystery orb system
+  final List<MysteryOrb> mysteryOrbs; // 3 mystery orbs in constellation
+  final int consecutivePenalties; // Pity timer: guaranteed reward after 2 penalties
+  final bool scoreMultiplierActive; // 1.5x score multiplier for next word
+  final MysteryOutcome? lastMysteryOutcome; // For animation feedback
+  final int? pendingMysteryOrbId; // Orb currently being hovered
+  final DateTime? mysteryOrbDwellStartTime; // When dwell started
+
   /// Points earned in current letter round
   int get pointsEarnedInRound => score - letterRoundStartScore;
 
@@ -127,9 +202,15 @@ class GameState extends Equatable {
   /// Total categories to complete per letter
   static const int categoriesPerLetter = 5;
 
+  /// Wildcard character used for mystery orbs in word patterns
+  static const String wildcardChar = '*';
+
   /// Get the current selection as a string (just the active drag)
+  /// Mystery orbs are TRUE WILDCARDS marked with '*' - can be any letter
   String get currentSelection => selectedLetterIds.map((id) {
         if (id == spaceId) return ' ';
+        // Mystery orbs are wildcards - marked with '*'
+        if (id >= 100) return wildcardChar;
         return letters.firstWhere((l) => l.id == id).letter;
       }).join();
 
@@ -137,9 +218,15 @@ class GameState extends Equatable {
   String get currentWord => committedWord + currentSelection;
 
   /// Get selected letter nodes in order (spaces are represented as null)
+  /// Mystery orbs return null (they're not LetterNodes but act as wildcards)
   List<LetterNode?> get selectedLetters => selectedLetterIds.map((id) {
         if (id == spaceId) return null; // null represents space
-        return letters.firstWhere((l) => l.id == id);
+        // Mystery orbs have IDs 100+, return null for them
+        if (id >= 100) return null;
+        return letters.firstWhere(
+          (l) => l.id == id,
+          orElse: () => const LetterNode(id: -1, letter: '', points: 0, position: Offset.zero),
+        );
       }).toList();
 
   /// Check if there's any word content (either committed or selected)
@@ -188,6 +275,14 @@ class GameState extends Equatable {
         hintLetterIds,
         hintAnimationIndex,
         approachingLetterIds,
+        isPureConnection,
+        showConnectionAnimation,
+        mysteryOrbs,
+        consecutivePenalties,
+        scoreMultiplierActive,
+        lastMysteryOutcome,
+        pendingMysteryOrbId,
+        mysteryOrbDwellStartTime,
       ];
 
   GameState copyWith({
@@ -224,6 +319,17 @@ class GameState extends Equatable {
     List<int>? hintLetterIds,
     int? hintAnimationIndex,
     List<int>? approachingLetterIds,
+    bool? isPureConnection,
+    bool? showConnectionAnimation,
+    List<MysteryOrb>? mysteryOrbs,
+    int? consecutivePenalties,
+    bool? scoreMultiplierActive,
+    MysteryOutcome? lastMysteryOutcome,
+    bool clearLastMysteryOutcome = false,
+    int? pendingMysteryOrbId,
+    bool clearPendingMysteryOrb = false,
+    DateTime? mysteryOrbDwellStartTime,
+    bool clearMysteryOrbDwellStartTime = false,
   }) {
     return GameState(
       letters: letters ?? this.letters,
@@ -254,6 +360,14 @@ class GameState extends Equatable {
       hintLetterIds: clearHintWord ? const [] : (hintLetterIds ?? this.hintLetterIds),
       hintAnimationIndex: clearHintWord ? 0 : (hintAnimationIndex ?? this.hintAnimationIndex),
       approachingLetterIds: approachingLetterIds ?? this.approachingLetterIds,
+      isPureConnection: isPureConnection ?? this.isPureConnection,
+      showConnectionAnimation: showConnectionAnimation ?? this.showConnectionAnimation,
+      mysteryOrbs: mysteryOrbs ?? this.mysteryOrbs,
+      consecutivePenalties: consecutivePenalties ?? this.consecutivePenalties,
+      scoreMultiplierActive: scoreMultiplierActive ?? this.scoreMultiplierActive,
+      lastMysteryOutcome: clearLastMysteryOutcome ? null : (lastMysteryOutcome ?? this.lastMysteryOutcome),
+      pendingMysteryOrbId: clearPendingMysteryOrb ? null : (pendingMysteryOrbId ?? this.pendingMysteryOrbId),
+      mysteryOrbDwellStartTime: clearMysteryOrbDwellStartTime ? null : (mysteryOrbDwellStartTime ?? this.mysteryOrbDwellStartTime),
     );
   }
 }
