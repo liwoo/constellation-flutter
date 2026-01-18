@@ -241,7 +241,7 @@ class CelebrationStatsPanel extends StatelessWidget {
 }
 
 /// Special counter for next round that shows the time bonus animation
-/// Formula: (timeRemaining * 2) + roundScore
+/// Formula: timeRemaining + (roundScore / 5)
 class _NextRoundCounter extends StatefulWidget {
   const _NextRoundCounter({
     required this.timeRemaining,
@@ -267,12 +267,12 @@ class _NextRoundCounterState extends State<_NextRoundCounter>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(milliseconds: 1200),
     );
 
-    // Formula: double remaining time + round score
-    final doubledTime = widget.timeRemaining * 2;
-    final endTime = doubledTime + widget.pointsEarned;
+    // Formula: remaining time + (round score / 5)
+    final scoreBonus = widget.pointsEarned ~/ 5;
+    final endTime = widget.timeRemaining + scoreBonus;
     _timeAnimation = Tween<double>(
       begin: widget.timeRemaining.toDouble(),
       end: endTime.toDouble(),
@@ -319,8 +319,8 @@ class _NextRoundCounterState extends State<_NextRoundCounter>
 
   @override
   Widget build(BuildContext context) {
-    final doubledTime = widget.timeRemaining * 2;
-    final endTime = doubledTime + widget.pointsEarned;
+    final scoreBonus = widget.pointsEarned ~/ 5;
+    final endTime = widget.timeRemaining + scoreBonus;
 
     return AnimatedOpacity(
       opacity: _started ? 1.0 : 0.0,
@@ -339,7 +339,7 @@ class _NextRoundCounterState extends State<_NextRoundCounter>
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  '(${widget.timeRemaining}s × 2) + ${widget.pointsEarned} pts = ${endTime}s',
+                  '${widget.timeRemaining}s + (${widget.pointsEarned} ÷ 5) = ${endTime}s',
                   style: GoogleFonts.exo2(
                     color: AppColors.accentGold.withAlpha(200),
                     fontSize: 12,
@@ -376,12 +376,25 @@ class _NextRoundCounterState extends State<_NextRoundCounter>
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      if (_controller.isCompleted) ...[
+                      if (_controller.isCompleted && scoreBonus > 0) ...[
                         const SizedBox(width: 8),
-                        Icon(
-                          Icons.arrow_upward,
-                          color: AppColors.accentGold,
-                          size: 18,
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.accentGold.withAlpha(50),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            '+$scoreBonus',
+                            style: GoogleFonts.orbitron(
+                              color: AppColors.accentGold,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ),
                       ],
                     ],

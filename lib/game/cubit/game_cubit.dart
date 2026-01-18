@@ -1317,9 +1317,11 @@ class GameCubit extends Cubit<GameState> {
   /// Continue to next round after letter complete celebration
   /// Called when user taps "Continue" on the celebration screen
   void continueToNextRound() {
-    // Time bonus: double remaining time + points earned in round
-    // e.g., 20s remaining + 70pts = (20 * 2) + 70 = 110s
-    final newTime = (state.timeRemaining * 2) + state.pointsEarnedInRound;
+    // Time bonus: remaining time + (round score / 5)
+    // e.g., 60s remaining + 80pts = 60 + 16 = 76s
+    // This rewards good performance without being too generous
+    final scoreBonus = state.pointsEarnedInRound ~/ 5;
+    final newTime = state.timeRemaining + scoreBonus;
 
     // Move to next letter round - timer stays paused until wheel lands
     emit(state.copyWith(
