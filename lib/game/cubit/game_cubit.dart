@@ -999,11 +999,19 @@ class GameCubit extends Cubit<GameState> {
     ));
   }
 
+  /// Minimum time required to use a hint
+  static const int _minTimeForHint = 15;
+
+  /// Time cost for using a hint
+  static const int _hintTimeCost = 10;
+
   /// Use a hint - animates letters in sequence for a valid word
-  /// Returns true if hint was used, false if no hints remaining
+  /// Returns true if hint was used, false if no hints remaining or not enough time
   bool useHint() {
     if (state.hintsRemaining <= 0) return false;
     if (state.currentLetter == null) return false;
+    // Don't allow hints with less than 15 seconds remaining
+    if (state.timeRemaining < _minTimeForHint) return false;
 
     // Get a random valid word from the dictionary
     final hintWord = _dictionary.getRandomWord(
@@ -1020,11 +1028,15 @@ class GameCubit extends Cubit<GameState> {
     // Haptic feedback for hint
     HapticService.instance.medium();
 
+    // Deduct 10 seconds for using a hint
+    final newTime = state.timeRemaining - _hintTimeCost;
+
     emit(state.copyWith(
       hintsRemaining: state.hintsRemaining - 1,
       hintWord: hintWord,
       hintLetterIds: hintLetterIds,
       hintAnimationIndex: 0,
+      timeRemaining: newTime,
     ));
 
     // Animate through the sequence with delays

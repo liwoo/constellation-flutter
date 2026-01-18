@@ -1193,8 +1193,10 @@ class _GameBodyState extends State<GameBody> with TickerProviderStateMixin {
     final canAddSpace = hasSelection;
     // Can repeat only if we have current selection
     final canRepeat = hasSelection;
-    // Can use hint if hints remaining and no hint currently showing
-    final canUseHint = state.hintsRemaining > 0 && state.hintWord == null;
+    // Can use hint if hints remaining, no hint currently showing, and enough time (15s+)
+    final canUseHint = state.hintsRemaining > 0 &&
+        state.hintWord == null &&
+        state.timeRemaining >= 15;
 
     return Padding(
       padding: const EdgeInsets.symmetric(
