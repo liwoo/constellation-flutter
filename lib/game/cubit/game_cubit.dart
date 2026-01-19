@@ -1220,8 +1220,17 @@ class GameCubit extends Cubit<GameState> {
 
     final newTime = state.timeRemaining + timeBonus;
 
-    // Extra haptic reward for time bonus
-    if (timeBonus > 0) {
+    // Dramatic haptic feedback for pure connection, simpler for regular time bonus
+    if (wasPureConnection) {
+      // Triple burst haptic for pure connection celebration
+      HapticService.instance.success();
+      Future.delayed(const Duration(milliseconds: 150), () {
+        HapticService.instance.medium();
+      });
+      Future.delayed(const Duration(milliseconds: 300), () {
+        HapticService.instance.success();
+      });
+    } else if (timeBonus > 0) {
       HapticService.instance.doubleTap();
     }
 
@@ -1239,7 +1248,9 @@ class GameCubit extends Cubit<GameState> {
     ));
 
     // Delay transition to allow celebration animation to play
-    Future.delayed(const Duration(milliseconds: 800), () {
+    // Pure connection gets longer delay to show the dramatic animation
+    final celebrationDelay = wasPureConnection ? 2200 : 800;
+    Future.delayed(Duration(milliseconds: celebrationDelay), () {
       if (isClosed) return; // Guard against cubit being closed
 
       // Check if we completed all 5 categories for this letter

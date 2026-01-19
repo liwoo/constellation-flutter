@@ -58,7 +58,7 @@ class _LetterConstellationState extends State<LetterConstellation>
   void initState() {
     super.initState();
     _celebrationController = AnimationController(
-      duration: const Duration(milliseconds: 1500), // Longer for dramatic effect
+      duration: const Duration(milliseconds: 2500), // Extended for dramatic pure connection celebration
       vsync: this,
     );
     _celebrationAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
