@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:constellation_app/shared/constants/constants.dart';
 import 'package:constellation_app/shared/widgets/widgets.dart';
 import 'package:constellation_app/game/cubit/game_cubit.dart';
 import 'package:constellation_app/game/widgets/connection_painter.dart';
@@ -58,7 +59,7 @@ class _LetterConstellationState extends State<LetterConstellation>
   void initState() {
     super.initState();
     _celebrationController = AnimationController(
-      duration: const Duration(milliseconds: 2500), // Extended for dramatic pure connection celebration
+      duration: const Duration(milliseconds: AnimationConfig.pureConnectionAnimationDuration),
       vsync: this,
     );
     _celebrationAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(

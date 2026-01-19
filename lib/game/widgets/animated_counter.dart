@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:constellation_app/shared/constants/constants.dart';
 import 'package:constellation_app/shared/services/haptic_service.dart';
 import 'package:constellation_app/shared/theme/theme.dart';
 
@@ -262,13 +263,8 @@ class _NextRoundCounterState extends State<_NextRoundCounter>
   bool _started = false;
   bool _showFormula = false;
 
-  /// Calculate clutch multiplier based on remaining time
-  /// ≤10s: 2x, 11-20s: 1.5x, >20s: 1x
-  double get _clutchMultiplier {
-    if (widget.timeRemaining <= 10) return 2.0;
-    if (widget.timeRemaining <= 20) return 1.5;
-    return 1.0;
-  }
+  /// Calculate clutch multiplier based on remaining time (uses ClutchConfig)
+  double get _clutchMultiplier => ClutchConfig.getMultiplier(widget.timeRemaining);
 
   int get _adjustedTime => (widget.timeRemaining * _clutchMultiplier).round();
   int get _endTime => _adjustedTime + widget.pointsEarned;
@@ -333,9 +329,9 @@ class _NextRoundCounterState extends State<_NextRoundCounter>
     final pts = widget.pointsEarned;
     final mult = _clutchMultiplier;
 
-    if (mult > 1.0) {
+    if (mult > ClutchConfig.noMultiplier) {
       // Show multiplier: "8s × 2 + 65 pts = 81s"
-      final multStr = mult == 2.0 ? '×2' : '×1.5';
+      final multStr = mult == ClutchConfig.doubleMultiplier ? '×2' : '×1.5';
       return '${time}s $multStr + $pts pts = ${_endTime}s';
     } else {
       // No multiplier: "30s + 65 pts = 95s"

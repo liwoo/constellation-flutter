@@ -5,6 +5,7 @@ import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/material.dart';
 import 'package:constellation_app/game/services/category_dictionary.dart';
+import 'package:constellation_app/shared/constants/constants.dart';
 import 'package:constellation_app/shared/models/models.dart';
 import 'package:constellation_app/shared/services/services.dart';
 
@@ -25,57 +26,20 @@ class GameCubit extends Cubit<GameState> {
   Offset? _lastDragPosition;
   DateTime? _lastDragTime;
 
-  // Tuning constants
-  static const Duration _dwellTime = Duration(seconds: 1);
-  // Velocity threshold - if moving faster than this, user is "passing through"
-  // Lower = must slow down more to trigger selection (more magnetic/sticky)
-  // (relative units per second)
-  static const double _passThroughVelocity = 0.15;
+  // Hit detection config from constants
+  static const Duration _dwellTime = Duration(seconds: HitDetectionConfig.dwellTimeSeconds);
+  static const double _passThroughVelocity = HitDetectionConfig.passThroughVelocity;
 
-  // Mystery orb configuration - count increases with difficulty
-  // Round 1-5: 0, Round 6-10: 1, Round 11-15: 2, Round 16-20: 3, Round 21-25: 4-5
-  int get _mysteryOrbCount {
-    final round = state.letterRound;
-    if (round <= 5) return 0;
-    if (round <= 10) return 1;
-    if (round <= 15) return 2;
-    if (round <= 20) return 3;
-    if (round <= 23) return 4;
-    return 5; // Rounds 24-25
-  }
+  // Mystery orb count based on round (from constants)
+  int get _mysteryOrbCount => MysteryOrbConfig.getOrbCount(state.letterRound);
 
-  // Mystery outcome probabilities (must sum to 100)
-  // Rewards (65% total): timeBonus 40%, scoreMultiplier 15%, freeHint 10%
-  // Penalties (35% total): timePenalty 25%, scrambleLetters 10%
+  // Mystery outcome probabilities from constants
   static const Map<MysteryOutcome, int> _mysteryOutcomeProbabilities = {
-    MysteryOutcome.timeBonus: 40,
-    MysteryOutcome.scoreMultiplier: 15,
-    MysteryOutcome.freeHint: 10,
-    MysteryOutcome.timePenalty: 25,
-    MysteryOutcome.scrambleLetters: 10,
-  };
-
-  // Letter point values (Scrabble-style)
-  static const Map<String, int> _letterPoints = {
-    'A': 1, 'B': 3, 'C': 3, 'D': 2, 'E': 1, 'F': 4, 'G': 2, 'H': 4,
-    'I': 1, 'J': 8, 'K': 5, 'L': 1, 'M': 3, 'N': 1, 'O': 1, 'P': 3,
-    'Q': 10, 'R': 1, 'S': 1, 'T': 1, 'U': 1, 'V': 4, 'W': 4, 'X': 8,
-    'Y': 4, 'Z': 10,
-  };
-
-  // Letter difficulty levels (1 = easiest, 5 = hardest)
-  // Based on frequency of words starting with these letters in categories
-  static const Map<String, int> _letterDifficulty = {
-    // Difficulty 1: Very common starting letters
-    'A': 1, 'B': 1, 'C': 1, 'S': 1, 'M': 1, 'P': 1,
-    // Difficulty 2: Common starting letters
-    'D': 2, 'F': 2, 'G': 2, 'H': 2, 'L': 2, 'R': 2, 'T': 2,
-    // Difficulty 3: Moderately common
-    'E': 3, 'I': 3, 'J': 3, 'K': 3, 'N': 3, 'O': 3, 'W': 3,
-    // Difficulty 4: Less common
-    'U': 4, 'V': 4, 'Y': 4,
-    // Difficulty 5: Rare starting letters (X excluded from game)
-    'Q': 5, 'Z': 5,
+    MysteryOutcome.timeBonus: MysteryOrbConfig.timeBonusProbability,
+    MysteryOutcome.scoreMultiplier: MysteryOrbConfig.scoreMultiplierProbability,
+    MysteryOutcome.freeHint: MysteryOrbConfig.freeHintProbability,
+    MysteryOutcome.timePenalty: MysteryOrbConfig.timePenaltyProbability,
+    MysteryOutcome.scrambleLetters: MysteryOrbConfig.scrambleLettersProbability,
   };
 
   void _initializeLetters() {
@@ -88,12 +52,12 @@ class GameCubit extends Cubit<GameState> {
   void startGame() {
     _initializeLetters();
     emit(state.copyWith(
-      timeRemaining: 250, // Start with 250 seconds, carries over between rounds
+      timeRemaining: GameConfig.startingTime,
       score: 0,
       letterRound: 1,
-      letterRoundStartScore: 0, // Reset so pointsEarnedInRound starts fresh
+      letterRoundStartScore: 0,
       completedLetters: [],
-      isPlaying: false, // Timer not started yet
+      isPlaying: false,
       isWinner: false,
       phase: GamePhase.spinningWheel,
       clearCurrentLetter: true,
@@ -101,7 +65,7 @@ class GameCubit extends Cubit<GameState> {
       currentCategories: [],
       categoryIndex: 0,
       clearLastAnswerCorrect: true,
-      hintsRemaining: 3, // Start with 3 hints
+      hintsRemaining: GameConfig.startingHints,
       clearHintWord: true,
       // Reset mystery orb state
       mysteryOrbs: [],
@@ -279,7 +243,7 @@ class GameCubit extends Cubit<GameState> {
     // Create letter nodes for remaining letters
     int positionIndex = 0;
     for (final letterChar in remainingLetters) {
-      final points = _letterPoints[letterChar] ?? 1;
+      final points = LetterPoints.values[letterChar] ?? 1;
       // Use alphabetical index as ID for consistency
       final id = letterChar.codeUnitAt(0) - 'A'.codeUnitAt(0);
 
@@ -358,26 +322,12 @@ class GameCubit extends Cubit<GameState> {
     final weightedList = <String>[];
     final currentRound = state.letterRound;
 
-    // Determine which difficulty levels are ALLOWED (not just preferred)
-    // Round 1-5: Only difficulty 1-3 (exclude Q, Z, U, V, Y)
-    // Round 6-10: Only difficulty 1-4 (exclude Q, Z)
-    // Round 11+: All difficulties allowed
-    final maxAllowedDifficulty = switch (currentRound) {
-      <= 5 => 3,   // No U, V, Y, Q, Z
-      <= 10 => 4,  // No Q, Z
-      _ => 5,      // All letters
-    };
-
-    // Preferred difficulty for weighting (easier letters still get higher weight)
-    final maxPreferredDifficulty = switch (currentRound) {
-      <= 5 => 2,
-      <= 10 => 3,
-      <= 15 => 4,
-      _ => 5,
-    };
+    // Get difficulty thresholds from config
+    final maxAllowedDifficulty = DifficultyConfig.getMaxDifficulty(currentRound);
+    final maxPreferredDifficulty = DifficultyConfig.getMaxPreferredDifficulty(currentRound);
 
     for (final letter in remaining) {
-      final difficulty = _letterDifficulty[letter] ?? 3;
+      final difficulty = DifficultyConfig.letterDifficulty[letter] ?? 3;
 
       // Skip letters that are too difficult for current round
       if (difficulty > maxAllowedDifficulty) {
@@ -459,7 +409,7 @@ class GameCubit extends Cubit<GameState> {
     // Create letter nodes in alphabetical order (for consistent IDs)
     for (int i = 0; i < 26; i++) {
       final letter = String.fromCharCode('A'.codeUnitAt(0) + i);
-      final points = _letterPoints[letter] ?? 1;
+      final points = LetterPoints.values[letter] ?? 1;
       final position = letterPositions[letter] ?? const Offset(0.5, 0.5);
 
       letters.add(LetterNode(
@@ -475,10 +425,9 @@ class GameCubit extends Cubit<GameState> {
 
   // Hit detection radii (relative to container size)
   // Larger radii now that we have fewer, more spread out letters
-  // Inner radius: immediate selection (must be very close to center)
-  static const double _innerHitRadius = 0.05;
-  // Outer radius: dwell-time selection (awareness zone)
-  static const double _outerHitRadius = 0.08;
+  // Hit radii from constants
+  static const double _innerHitRadius = HitDetectionConfig.innerHitRadius;
+  static const double _outerHitRadius = HitDetectionConfig.outerHitRadius;
 
   /// Start dragging from a position - check if it hits a letter or mystery orb
   /// If there's an existing selection (e.g., after pressing x2), continue from it
@@ -499,22 +448,37 @@ class GameCubit extends Cubit<GameState> {
     if (hasExistingSelection) {
       // Continue from existing selection
       // NOTE: We preserve isPureConnection here because the user might have
-      // just tapped x2 or space button. Only selectLetter() breaks pure connection.
+      // just tapped x2 or space button. Only direct letter taps break pure connection.
       if (hit != null) {
         final lastId = state.selectedLetterIds.last;
         if (hit.id != lastId) {
-          // Hit a different letter/orb - use confirmation to add (handles orb effects)
+          // Hit a different letter/orb - this is a TAP, breaks pure connection
           emit(state.copyWith(
             isDragging: true,
             currentDragPosition: relativePosition,
+            isPureConnection: false, // Tapping a letter breaks pure connection
           ));
           _confirmSelection(hit.id, hit.letter, hit.isOrb, relativePosition);
         } else {
-          // Hit the same item - just continue dragging
-          emit(state.copyWith(
-            isDragging: true,
-            currentDragPosition: relativePosition,
-          ));
+          // Hit the same letter - TAP TO REPEAT (like x2 but no bonus)
+          // This breaks pure connection since it's a tap
+          if (!hit.isOrb) {
+            // Add the same letter again (allows "SS" by tapping S twice)
+            final newSelection = [...state.selectedLetterIds, hit.id];
+            emit(state.copyWith(
+              isDragging: true,
+              currentDragPosition: relativePosition,
+              selectedLetterIds: newSelection,
+              isPureConnection: false, // Tapping breaks pure connection
+            ));
+            HapticService.instance.light();
+          } else {
+            // Can't repeat mystery orbs - just continue
+            emit(state.copyWith(
+              isDragging: true,
+              currentDragPosition: relativePosition,
+            ));
+          }
         }
       } else {
         // No hit - just start dragging, keep existing selection
@@ -546,11 +510,12 @@ class GameCubit extends Cubit<GameState> {
         }
 
         // Valid starting letter/orb - add to selection and trigger orb effect if needed
-        // Mark as pure connection since we're starting fresh with a drag
+        // Don't set isPureConnection yet - it's only true if user DRAGS through letters
+        // If they just tap letters, it stays false
         emit(state.copyWith(
           isDragging: true,
           currentDragPosition: relativePosition,
-          isPureConnection: true, // Starting a new drag = potential pure connection
+          isPureConnection: false, // Will become true only if user drags to add more letters
         ));
 
         // Handle mystery orb selection (triggers effect on first use)
@@ -659,7 +624,7 @@ class GameCubit extends Cubit<GameState> {
     // Only immediate selection if moving slowly (not passing through)
     if (innerHit != null && innerHit.id != lastSelectedId) {
       if (!isPassingThrough) {
-        _confirmSelection(innerHit.id, innerHit.letter, innerHit.isOrb, relativePosition);
+        _confirmSelection(innerHit.id, innerHit.letter, innerHit.isOrb, relativePosition, fromDrag: true);
         return;
       }
       // If passing through inner radius, treat same as outer - need to dwell
@@ -688,7 +653,7 @@ class GameCubit extends Cubit<GameState> {
         // Same item as pending - check if dwell time elapsed
         final elapsed = now.difference(_pendingLetterEnteredAt!);
         if (elapsed >= _dwellTime) {
-          _confirmSelection(outerHit.id, outerHit.letter, outerHit.isOrb, relativePosition);
+          _confirmSelection(outerHit.id, outerHit.letter, outerHit.isOrb, relativePosition, fromDrag: true);
         } else {
           // Still waiting - show approaching state
           // For orbs, also track orb dwell separately for visual feedback
@@ -744,7 +709,9 @@ class GameCubit extends Cubit<GameState> {
 
   /// Confirm selection of a letter OR mystery orb
   /// Mystery orbs are TRUE WILDCARDS - always connectable, validation at submit time
-  void _confirmSelection(int id, String letter, bool isOrb, Offset position) {
+  /// [fromDrag] indicates if this came from dragging (true) or tapping (false)
+  /// Only dragging maintains pure connection status
+  void _confirmSelection(int id, String letter, bool isOrb, Offset position, {bool fromDrag = false}) {
     _pendingLetterId = null;
     _pendingLetterEnteredAt = null;
 
@@ -810,6 +777,8 @@ class GameCubit extends Cubit<GameState> {
             clearPendingMysteryOrb: true,
             clearMysteryOrbDwellStartTime: true,
             lastMysteryOutcome: outcome,
+            // Only set pure connection if dragging through letters (not tapping)
+            isPureConnection: fromDrag ? true : false,
           ));
 
           // Apply the outcome effects (delayed to not interrupt selection)
@@ -824,6 +793,8 @@ class GameCubit extends Cubit<GameState> {
       currentDragPosition: position,
       approachingLetterIds: [],
       clearPendingMysteryOrb: true,
+      // Only set pure connection if dragging through letters (not tapping)
+      isPureConnection: fromDrag ? true : false,
       clearMysteryOrbDwellStartTime: true,
     ));
   }
@@ -832,10 +803,10 @@ class GameCubit extends Cubit<GameState> {
   void _applyMysteryOutcomeEffects(MysteryOutcome outcome) {
     switch (outcome) {
       case MysteryOutcome.timeBonus:
-        // +10 seconds
+        // Time bonus from mystery orb
         AudioService.instance.play(GameSound.mysteryReward);
         emit(state.copyWith(
-          timeRemaining: state.timeRemaining + 10,
+          timeRemaining: state.timeRemaining + TimeConfig.mysteryTimeBonus,
           consecutivePenalties: 0,
         ));
         break;
@@ -860,10 +831,10 @@ class GameCubit extends Cubit<GameState> {
         break;
 
       case MysteryOutcome.timePenalty:
-        // -5 seconds
+        // Time penalty from mystery orb
         AudioService.instance.play(GameSound.mysteryPenalty);
         HapticService.instance.error();
-        final newTime = (state.timeRemaining - 5).clamp(0, 999);
+        final newTime = (state.timeRemaining - TimeConfig.mysteryTimePenalty).clamp(0, 999);
         emit(state.copyWith(
           timeRemaining: newTime,
           consecutivePenalties: state.consecutivePenalties + 1,
@@ -886,7 +857,7 @@ class GameCubit extends Cubit<GameState> {
     }
 
     // Clear the outcome feedback after delay
-    Future.delayed(const Duration(seconds: 2), () {
+    Future.delayed(const Duration(milliseconds: AnimationConfig.mysteryOutcomeDisplayDuration), () {
       if (isClosed) return;
       emit(state.copyWith(clearLastMysteryOutcome: true));
     });
@@ -989,11 +960,9 @@ class GameCubit extends Cubit<GameState> {
     ));
   }
 
-  /// Minimum time required to use a hint
-  static const int _minTimeForHint = 15;
-
-  /// Time cost for using a hint
-  static const int _hintTimeCost = 10;
+  // Hint configuration from constants
+  static const int _minTimeForHint = TimeConfig.minTimeForHint;
+  static const int _hintTimeCost = TimeConfig.hintTimeCost;
 
   /// Use a hint - animates letters in sequence for a valid word
   /// Returns true if hint was used, false if no hints remaining or not enough time
@@ -1056,8 +1025,8 @@ class GameCubit extends Cubit<GameState> {
 
   /// Animate through the hint sequence, highlighting letters one by one
   void _animateHintSequence(int totalLetters) {
-    const delayPerLetter = Duration(milliseconds: 400);
-    final totalDuration = delayPerLetter * totalLetters + const Duration(milliseconds: 800);
+    const delayPerLetter = Duration(milliseconds: AnimationConfig.hintLetterRevealDelay);
+    final totalDuration = delayPerLetter * totalLetters + const Duration(milliseconds: AnimationConfig.hintCompletionBuffer);
 
     // Advance through each letter in sequence
     for (int i = 1; i <= totalLetters; i++) {
@@ -1168,26 +1137,24 @@ class GameCubit extends Cubit<GameState> {
     // Sum letter points (spaces don't count)
     for (final char in upperWord.split('')) {
       if (char == ' ') continue; // Skip spaces
-      score += _letterPoints[char] ?? 1;
+      score += LetterPoints.values[char] ?? 1;
     }
 
     // Count actual letters (excluding spaces) for length bonus
     final letterCount = upperWord.replaceAll(' ', '').length;
 
     // Bonus for longer words
-    if (letterCount >= 7) {
-      score += 10; // Long word bonus
-    } else if (letterCount >= 5) {
-      score += 5; // Medium word bonus
+    if (letterCount >= ScoringConfig.longWordThreshold) {
+      score += ScoringConfig.longWordBonus;
+    } else if (letterCount >= ScoringConfig.mediumWordThreshold) {
+      score += ScoringConfig.mediumWordBonus;
     }
 
     // Bonus for using space button (multi-word answers like "JURASSIC PARK")
-    // +5 points per space used
-    score += state.spaceUsageCount * 5;
+    score += state.spaceUsageCount * ScoringConfig.spacePointsBonus;
 
     // Bonus for using x2 button (double letters like SS in JURASSIC)
-    // +3 points per x2 used
-    score += state.repeatUsageCount * 3;
+    score += state.repeatUsageCount * ScoringConfig.repeatPointsBonus;
 
     return score;
   }
@@ -1200,22 +1167,22 @@ class GameCubit extends Cubit<GameState> {
 
     var wordScore = _calculateWordScore(word);
 
-    // Apply score multiplier if active
+    // Apply score multiplier if active (from mystery orb)
     if (state.scoreMultiplierActive) {
-      wordScore = (wordScore * 1.5).round();
+      wordScore = (wordScore * ScoringConfig.mysteryScoreMultiplier).round();
     }
 
     final newScore = state.score + wordScore;
     final newWords = [...state.completedWords, word];
     final nextCategoryIndex = state.categoryIndex + 1;
 
-    // Time bonus: +10 seconds per space used (multi-word answers)
-    var timeBonus = state.spaceUsageCount * 10;
+    // Time bonus for space usage
+    var timeBonus = state.spaceUsageCount * TimeConfig.spaceTimeBonus;
 
-    // Pure connection bonus: +10 seconds for completing word in single drag
+    // Pure connection bonus for completing word in single drag
     final wasPureConnection = state.isPureConnection;
     if (wasPureConnection) {
-      timeBonus += 10;
+      timeBonus += TimeConfig.pureConnectionBonus;
     }
 
     final newTime = state.timeRemaining + timeBonus;
@@ -1224,10 +1191,10 @@ class GameCubit extends Cubit<GameState> {
     if (wasPureConnection) {
       // Triple burst haptic for pure connection celebration
       HapticService.instance.success();
-      Future.delayed(const Duration(milliseconds: 150), () {
+      Future.delayed(const Duration(milliseconds: AnimationConfig.hapticBurstDelay1), () {
         HapticService.instance.medium();
       });
-      Future.delayed(const Duration(milliseconds: 300), () {
+      Future.delayed(const Duration(milliseconds: AnimationConfig.hapticBurstDelay2), () {
         HapticService.instance.success();
       });
     } else if (timeBonus > 0) {
@@ -1242,14 +1209,15 @@ class GameCubit extends Cubit<GameState> {
       lastAnswerCorrect: true,
       lastTimeBonus: timeBonus > 0 ? timeBonus : null,
       clearLastTimeBonus: timeBonus == 0,
-      scoreMultiplierActive: false, // Consume the multiplier
-      showConnectionAnimation: wasPureConnection, // Trigger path animation
-      isPureConnection: false, // Reset for next word
+      scoreMultiplierActive: false,
+      showConnectionAnimation: wasPureConnection,
+      isPureConnection: false,
     ));
 
     // Delay transition to allow celebration animation to play
-    // Pure connection gets longer delay to show the dramatic animation
-    final celebrationDelay = wasPureConnection ? 2200 : 800;
+    final celebrationDelay = wasPureConnection
+        ? AnimationConfig.pureConnectionCelebrationDelay
+        : AnimationConfig.normalCelebrationDelay;
     Future.delayed(Duration(milliseconds: celebrationDelay), () {
       if (isClosed) return; // Guard against cubit being closed
 
@@ -1284,8 +1252,8 @@ class GameCubit extends Cubit<GameState> {
   void _completeLetterRound(int newScore, List<String> newWords) {
     final newCompletedLetters = [...state.completedLetters, state.currentLetter!];
 
-    // Check if all 25 letters completed (A-Y, no X)
-    if (newCompletedLetters.length >= 25) {
+    // Check if all letters completed (A-Y, no X)
+    if (newCompletedLetters.length >= GameConfig.totalLetters) {
       _endGame(isWinner: true, finalScore: newScore);
       return;
     }
@@ -1324,14 +1292,7 @@ class GameCubit extends Cubit<GameState> {
     final time = state.timeRemaining;
 
     // Apply clutch multiplier to remaining time
-    final double timeMultiplier;
-    if (time <= 10) {
-      timeMultiplier = 2.0;
-    } else if (time <= 20) {
-      timeMultiplier = 1.5;
-    } else {
-      timeMultiplier = 1.0;
-    }
+    final timeMultiplier = ClutchConfig.getMultiplier(time);
 
     final adjustedTime = (time * timeMultiplier).round();
     final newTime = adjustedTime + roundScore;
@@ -1358,7 +1319,7 @@ class GameCubit extends Cubit<GameState> {
     HapticService.instance.error();
 
     // Deduct time penalty for wrong answer
-    final newTime = (state.timeRemaining - 5).clamp(0, 999);
+    final newTime = (state.timeRemaining - TimeConfig.wrongAnswerPenalty).clamp(0, 999);
 
     // Only clear current selection, keep banked words (committedWord) safe
     emit(state.copyWith(
@@ -1420,8 +1381,8 @@ class GameCubit extends Cubit<GameState> {
     emit(state.copyWith(
       phase: GamePhase.notStarted,
       score: 0,
-      letterRoundStartScore: 0, // Reset so pointsEarnedInRound starts fresh
-      timeRemaining: 250, // Reset to starting time
+      letterRoundStartScore: 0,
+      timeRemaining: GameConfig.startingTime,
       completedLetters: [],
       completedWords: [],
       letterRound: 1,
@@ -1434,7 +1395,7 @@ class GameCubit extends Cubit<GameState> {
       currentCategories: [],
       categoryIndex: 0,
       clearLastAnswerCorrect: true,
-      hintsRemaining: 3, // Reset hints
+      hintsRemaining: GameConfig.startingHints,
       clearHintWord: true,
       // Reset mystery orb state
       mysteryOrbs: [],
@@ -1452,8 +1413,8 @@ class GameCubit extends Cubit<GameState> {
 
   /// Determine mystery outcome using probability weights and pity system
   MysteryOutcome _determineMysteryOutcome() {
-    // Pity system: after 2 consecutive penalties, guarantee a reward
-    if (state.consecutivePenalties >= 2) {
+    // Pity system: after consecutive penalties, guarantee a reward
+    if (state.consecutivePenalties >= MysteryOrbConfig.pityThreshold) {
       // Force a reward
       final rewards = [
         MysteryOutcome.timeBonus,
