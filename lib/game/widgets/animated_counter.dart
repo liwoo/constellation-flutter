@@ -241,7 +241,7 @@ class CelebrationStatsPanel extends StatelessWidget {
 }
 
 /// Special counter for next round that shows the time bonus animation
-/// Formula: timeRemaining + (roundScore / 5)
+/// Formula: timeRemaining + roundScore
 class _NextRoundCounter extends StatefulWidget {
   const _NextRoundCounter({
     required this.timeRemaining,
@@ -262,20 +262,30 @@ class _NextRoundCounterState extends State<_NextRoundCounter>
   bool _started = false;
   bool _showFormula = false;
 
+  /// Calculate clutch multiplier based on remaining time
+  /// ≤10s: 2x, 11-20s: 1.5x, >20s: 1x
+  double get _clutchMultiplier {
+    if (widget.timeRemaining <= 10) return 2.0;
+    if (widget.timeRemaining <= 20) return 1.5;
+    return 1.0;
+  }
+
+  int get _adjustedTime => (widget.timeRemaining * _clutchMultiplier).round();
+  int get _endTime => _adjustedTime + widget.pointsEarned;
+  int get _totalBonus => _endTime - widget.timeRemaining;
+
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
+      duration: const Duration(milliseconds: 1500),
     );
 
-    // Formula: remaining time + (round score / 5)
-    final scoreBonus = widget.pointsEarned ~/ 5;
-    final endTime = widget.timeRemaining + scoreBonus;
+    // Formula: (time × multiplier) + round score
     _timeAnimation = Tween<double>(
       begin: widget.timeRemaining.toDouble(),
-      end: endTime.toDouble(),
+      end: _endTime.toDouble(),
     ).animate(CurvedAnimation(
       parent: _controller,
       curve: Curves.easeOutCubic,
@@ -317,11 +327,24 @@ class _NextRoundCounterState extends State<_NextRoundCounter>
     super.dispose();
   }
 
+  /// Build formula string based on clutch multiplier
+  String get _formulaString {
+    final time = widget.timeRemaining;
+    final pts = widget.pointsEarned;
+    final mult = _clutchMultiplier;
+
+    if (mult > 1.0) {
+      // Show multiplier: "8s × 2 + 65 pts = 81s"
+      final multStr = mult == 2.0 ? '×2' : '×1.5';
+      return '${time}s $multStr + $pts pts = ${_endTime}s';
+    } else {
+      // No multiplier: "30s + 65 pts = 95s"
+      return '${time}s + $pts pts = ${_endTime}s';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final scoreBonus = widget.pointsEarned ~/ 5;
-    final endTime = widget.timeRemaining + scoreBonus;
-
     return AnimatedOpacity(
       opacity: _started ? 1.0 : 0.0,
       duration: const Duration(milliseconds: 200),
@@ -339,7 +362,7 @@ class _NextRoundCounterState extends State<_NextRoundCounter>
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  '${widget.timeRemaining}s + (${widget.pointsEarned} ÷ 5) = ${endTime}s',
+                  _formulaString,
                   style: GoogleFonts.exo2(
                     color: AppColors.accentGold.withAlpha(200),
                     fontSize: 12,
@@ -376,7 +399,8 @@ class _NextRoundCounterState extends State<_NextRoundCounter>
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      if (_controller.isCompleted && scoreBonus > 0) ...[
+                      // Show total bonus (clutch time bonus + round score)
+                      if (_controller.isCompleted && _totalBonus > 0) ...[
                         const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(
@@ -388,7 +412,7 @@ class _NextRoundCounterState extends State<_NextRoundCounter>
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
-                            '+$scoreBonus',
+                            '+$_totalBonus',
                             style: GoogleFonts.orbitron(
                               color: AppColors.accentGold,
                               fontSize: 12,
