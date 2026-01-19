@@ -938,18 +938,8 @@ class GameCubit extends Cubit<GameState> {
   }
 
   void selectLetter(int letterId) {
-    // Check if it's the last one (then deselect)
-    if (state.selectedLetterIds.isNotEmpty &&
-        state.selectedLetterIds.last == letterId) {
-      final newSelection = List<int>.from(state.selectedLetterIds)..removeLast();
-      emit(state.copyWith(
-        selectedLetterIds: newSelection,
-        isPureConnection: false, // Tapping breaks pure connection
-      ));
-      return;
-    }
-
-    // Add to selection (allow duplicates, just not consecutive)
+    // Add letter to selection - allows consecutive duplicates (like tapping S twice for SS)
+    // This works like the x2 button but without the bonus points
     // Tapping letters breaks pure connection (only dragging maintains it)
     final newSelection = [...state.selectedLetterIds, letterId];
     emit(state.copyWith(
@@ -1222,10 +1212,10 @@ class GameCubit extends Cubit<GameState> {
     // Time bonus: +10 seconds per space used (multi-word answers)
     var timeBonus = state.spaceUsageCount * 10;
 
-    // Pure connection bonus: +5 seconds for completing word in single drag
+    // Pure connection bonus: +10 seconds for completing word in single drag
     final wasPureConnection = state.isPureConnection;
     if (wasPureConnection) {
-      timeBonus += 5;
+      timeBonus += 10;
     }
 
     final newTime = state.timeRemaining + timeBonus;
