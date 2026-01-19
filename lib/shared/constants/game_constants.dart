@@ -98,6 +98,24 @@ class ClutchConfig {
   }
 }
 
+/// Hint configuration - shorter words in early rounds
+class HintConfig {
+  const HintConfig._();
+
+  /// Get max word length for hints based on round
+  /// Earlier rounds get shorter, easier hints
+  static int getMaxHintLength(int round) {
+    if (round <= 5) return 5;   // Very short words only
+    if (round <= 10) return 7;  // Short to medium
+    if (round <= 15) return 9;  // Medium length
+    if (round <= 20) return 11; // Longer allowed
+    return 999;                  // No limit for final rounds
+  }
+
+  /// Round threshold below which we always pick the shortest word
+  static const int preferShortestRoundThreshold = 10;
+}
+
 /// Animation duration configuration (milliseconds)
 class AnimationConfig {
   const AnimationConfig._();

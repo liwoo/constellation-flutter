@@ -965,6 +965,7 @@ class GameCubit extends Cubit<GameState> {
   static const int _hintTimeCost = TimeConfig.hintTimeCost;
 
   /// Use a hint - animates letters in sequence for a valid word
+  /// Earlier rounds get shorter words, later rounds allow varied lengths
   /// Returns true if hint was used, false if no hints remaining or not enough time
   bool useHint() {
     if (state.hintsRemaining <= 0) return false;
@@ -972,13 +973,45 @@ class GameCubit extends Cubit<GameState> {
     // Don't allow hints with less than 15 seconds remaining
     if (state.timeRemaining < _minTimeForHint) return false;
 
-    // Get a random valid word from the dictionary
-    final hintWord = _dictionary.getRandomWord(
+    // Get all valid words for this category/letter
+    final allWords = _dictionary.getWordsForCategoryAndLetter(
       state.category,
       state.currentLetter!,
     );
 
-    if (hintWord == null) return false;
+    if (allWords.isEmpty) return false;
+
+    // Determine max word length based on round (shorter hints early)
+    final round = state.letterRound;
+    final maxLength = HintConfig.getMaxHintLength(round);
+
+    // Filter words by max length (count letters only, not spaces)
+    var eligibleWords = allWords.where((w) {
+      final letterCount = w.replaceAll(' ', '').length;
+      return letterCount <= maxLength;
+    }).toList();
+
+    // If no words fit the length limit, fall back to shortest available
+    if (eligibleWords.isEmpty) {
+      // Sort by length and take the shortest ones
+      final sorted = List<String>.from(allWords)
+        ..sort((a, b) => a.replaceAll(' ', '').length.compareTo(b.replaceAll(' ', '').length));
+      final shortestLength = sorted.first.replaceAll(' ', '').length;
+      eligibleWords = sorted.where((w) => w.replaceAll(' ', '').length == shortestLength).toList();
+    }
+
+    // In early rounds, prefer the shortest from eligible words
+    String hintWord;
+    if (round <= HintConfig.preferShortestRoundThreshold) {
+      // Sort by length and pick from shortest
+      eligibleWords.sort((a, b) => a.replaceAll(' ', '').length.compareTo(b.replaceAll(' ', '').length));
+      final shortestLength = eligibleWords.first.replaceAll(' ', '').length;
+      final shortestWords = eligibleWords.where((w) => w.replaceAll(' ', '').length == shortestLength).toList();
+      hintWord = shortestWords[_random.nextInt(shortestWords.length)];
+    } else {
+      // Later rounds: random from eligible
+      hintWord = eligibleWords[_random.nextInt(eligibleWords.length)];
+    }
 
     // Compute the sequence of letter node IDs
     final hintLetterIds = _computeHintLetterSequence(hintWord);
