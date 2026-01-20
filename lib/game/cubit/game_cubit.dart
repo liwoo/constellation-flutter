@@ -20,6 +20,9 @@ class GameCubit extends Cubit<GameState> {
   final _dictionary = CategoryDictionary.instance;
   final _random = Random();
 
+  // Background time tracking - prevent cheating by backgrounding the app
+  DateTime? _backgroundedAt;
+
   // Sticky/magnetic selection tracking
   int? _pendingLetterId;
   DateTime? _pendingLetterEnteredAt;
@@ -1607,6 +1610,50 @@ class GameCubit extends Cubit<GameState> {
       ));
     }
     return scrambled;
+  }
+
+  // ============================================
+  // APP LIFECYCLE METHODS (background time tracking)
+  // ============================================
+
+  /// Called when app goes to background
+  /// Stores the current timestamp and pauses the timer
+  void onAppPaused() {
+    if (!state.isPlaying) return; // Only track if actively playing
+
+    _backgroundedAt = DateTime.now();
+    _timer?.cancel();
+  }
+
+  /// Called when app returns to foreground
+  /// Calculates elapsed wall-clock time and deducts from timeRemaining
+  void onAppResumed() {
+    if (_backgroundedAt == null) return; // Wasn't backgrounded while playing
+    if (state.phase == GamePhase.notStarted ||
+        state.phase == GamePhase.gameOver ||
+        state.phase == GamePhase.letterComplete) {
+      // Don't deduct time during these phases
+      _backgroundedAt = null;
+      return;
+    }
+
+    final now = DateTime.now();
+    final elapsedSeconds = now.difference(_backgroundedAt!).inSeconds;
+    _backgroundedAt = null;
+
+    // Deduct elapsed time from remaining time
+    final newTime = (state.timeRemaining - elapsedSeconds).clamp(0, 999);
+
+    if (newTime <= 0) {
+      // Time ran out while backgrounded
+      _endGame(isWinner: false);
+    } else {
+      emit(state.copyWith(timeRemaining: newTime));
+      // Restart the timer
+      if (state.isPlaying) {
+        _startTimer();
+      }
+    }
   }
 
   @override

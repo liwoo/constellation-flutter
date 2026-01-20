@@ -24,7 +24,8 @@ class GameBody extends StatefulWidget {
   State<GameBody> createState() => _GameBodyState();
 }
 
-class _GameBodyState extends State<GameBody> with TickerProviderStateMixin {
+class _GameBodyState extends State<GameBody>
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   // Animation for floating time bonus
   late AnimationController _bonusAnimController;
   late Animation<double> _bonusOpacity;
@@ -41,6 +42,10 @@ class _GameBodyState extends State<GameBody> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+
+    // Register for app lifecycle events (background time tracking)
+    WidgetsBinding.instance.addObserver(this);
+
     _bonusAnimController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
@@ -83,9 +88,33 @@ class _GameBodyState extends State<GameBody> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _bonusAnimController.dispose();
     _mysteryAnimController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    final cubit = context.read<GameCubit>();
+
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+        // App went to background - record timestamp
+        cubit.onAppPaused();
+        break;
+      case AppLifecycleState.resumed:
+        // App returned to foreground - deduct elapsed time
+        cubit.onAppResumed();
+        break;
+      case AppLifecycleState.detached:
+        // App is being terminated - no action needed
+        break;
+    }
   }
 
   void _showTimeBonus(int bonus) {
