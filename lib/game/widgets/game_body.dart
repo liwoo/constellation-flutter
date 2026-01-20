@@ -98,21 +98,29 @@ class _GameBodyState extends State<GameBody>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
 
+    // Guard against accessing context when widget is not mounted
+    if (!mounted) return;
+
     final cubit = context.read<GameCubit>();
 
     switch (state) {
       case AppLifecycleState.paused:
-      case AppLifecycleState.inactive:
-      case AppLifecycleState.hidden:
         // App went to background - record timestamp
+        // Only 'paused' means true background (not 'inactive' which fires for
+        // brief interruptions like notification panel or control center)
         cubit.onAppPaused();
         break;
       case AppLifecycleState.resumed:
         // App returned to foreground - deduct elapsed time
         cubit.onAppResumed();
         break;
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
       case AppLifecycleState.detached:
-        // App is being terminated - no action needed
+        // inactive: Brief interruption (notification panel, incoming call dialog)
+        // hidden: App hidden but may return quickly
+        // detached: App terminating
+        // Don't track time for these - only true background (paused)
         break;
     }
   }
