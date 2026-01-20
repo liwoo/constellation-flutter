@@ -3,6 +3,45 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:constellation_app/shared/models/models.dart';
 
+/// Represents saved game progress for resuming
+class SavedGameProgress {
+  final int letterRound;
+  final List<String> completedLetters;
+  final int score;
+  final int timeRemaining;
+  final int hintsRemaining;
+  final DateTime savedAt;
+
+  const SavedGameProgress({
+    required this.letterRound,
+    required this.completedLetters,
+    required this.score,
+    required this.timeRemaining,
+    required this.hintsRemaining,
+    required this.savedAt,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'letterRound': letterRound,
+        'completedLetters': completedLetters,
+        'score': score,
+        'timeRemaining': timeRemaining,
+        'hintsRemaining': hintsRemaining,
+        'savedAt': savedAt.toIso8601String(),
+      };
+
+  factory SavedGameProgress.fromJson(Map<String, dynamic> json) {
+    return SavedGameProgress(
+      letterRound: json['letterRound'] as int,
+      completedLetters: List<String>.from(json['completedLetters'] as List),
+      score: json['score'] as int,
+      timeRemaining: json['timeRemaining'] as int,
+      hintsRemaining: json['hintsRemaining'] as int,
+      savedAt: DateTime.parse(json['savedAt'] as String),
+    );
+  }
+}
+
 /// Service for persisting game data locally
 class StorageService {
   StorageService._();
@@ -16,6 +55,7 @@ class StorageService {
   static const String _highScoreKey = 'high_score';
   static const String _totalGamesKey = 'total_games';
   static const String _totalWinsKey = 'total_wins';
+  static const String _savedProgressKey = 'saved_game_progress';
 
   /// Initialize the storage service
   Future<void> init() async {
@@ -111,5 +151,61 @@ class StorageService {
     await _prefs!.remove(_highScoreKey);
     await _prefs!.remove(_totalGamesKey);
     await _prefs!.remove(_totalWinsKey);
+    await _prefs!.remove(_savedProgressKey);
+  }
+
+  // ============================================
+  // GAME PROGRESS PERSISTENCE (Resume Feature)
+  // ============================================
+
+  /// Save current game progress for later resumption
+  Future<void> saveGameProgress({
+    required int letterRound,
+    required List<String> completedLetters,
+    required int score,
+    required int timeRemaining,
+    required int hintsRemaining,
+  }) async {
+    await init();
+
+    final progress = SavedGameProgress(
+      letterRound: letterRound,
+      completedLetters: completedLetters,
+      score: score,
+      timeRemaining: timeRemaining,
+      hintsRemaining: hintsRemaining,
+      savedAt: DateTime.now(),
+    );
+
+    await _prefs!.setString(_savedProgressKey, jsonEncode(progress.toJson()));
+  }
+
+  /// Load saved game progress (returns null if none exists)
+  Future<SavedGameProgress?> loadGameProgress() async {
+    await init();
+
+    final jsonString = _prefs!.getString(_savedProgressKey);
+    if (jsonString == null) return null;
+
+    try {
+      final json = jsonDecode(jsonString) as Map<String, dynamic>;
+      return SavedGameProgress.fromJson(json);
+    } catch (e) {
+      // Corrupted data, clear it
+      await clearGameProgress();
+      return null;
+    }
+  }
+
+  /// Check if there's saved game progress
+  Future<bool> hasSavedProgress() async {
+    await init();
+    return _prefs!.containsKey(_savedProgressKey);
+  }
+
+  /// Clear saved game progress (called when game ends)
+  Future<void> clearGameProgress() async {
+    await init();
+    await _prefs!.remove(_savedProgressKey);
   }
 }

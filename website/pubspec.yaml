@@ -1,0 +1,14 @@
+name: wordstellation_website
+description: Landing page for Wordstellation - the word puzzle game
+publish_to: 'none'
+
+version: 1.0.0
+
+environment:
+  sdk: ^3.0.0
+
+dependencies:
+  static_shock: ^0.0.14
+
+dev_dependencies:
+  static_shock_cli: ^0.0.6

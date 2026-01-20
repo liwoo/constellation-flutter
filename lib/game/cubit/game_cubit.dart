@@ -48,8 +48,57 @@ class GameCubit extends Cubit<GameState> {
     emit(state.copyWith(letters: letters));
   }
 
-  /// Start Alpha Quest game - go to spinning wheel
+  /// Check if there's saved game progress that can be resumed
+  Future<bool> hasSavedProgress() async {
+    return StorageService.instance.hasSavedProgress();
+  }
+
+  /// Load saved progress info (for UI display)
+  Future<SavedGameProgress?> getSavedProgress() async {
+    return StorageService.instance.loadGameProgress();
+  }
+
+  /// Resume from saved progress - starts at the saved letter round
+  Future<void> resumeGame() async {
+    final progress = await StorageService.instance.loadGameProgress();
+    if (progress == null) {
+      // No saved progress, start fresh
+      startGame();
+      return;
+    }
+
+    _initializeLetters();
+    emit(state.copyWith(
+      timeRemaining: progress.timeRemaining,
+      score: progress.score,
+      letterRound: progress.letterRound,
+      letterRoundStartScore: progress.score, // Start tracking from current score
+      completedLetters: progress.completedLetters,
+      isPlaying: false,
+      isWinner: false,
+      phase: GamePhase.spinningWheel,
+      clearCurrentLetter: true,
+      category: '',
+      currentCategories: [],
+      categoryIndex: 0,
+      clearLastAnswerCorrect: true,
+      hintsRemaining: progress.hintsRemaining,
+      clearHintWord: true,
+      // Reset mystery orb state
+      mysteryOrbs: [],
+      consecutivePenalties: 0,
+      scoreMultiplierActive: false,
+      clearLastMysteryOutcome: true,
+      clearPendingMysteryOrb: true,
+      clearMysteryOrbDwellStartTime: true,
+    ));
+  }
+
+  /// Start Alpha Quest game - go to spinning wheel (fresh start)
   void startGame() {
+    // Clear any saved progress when starting fresh
+    StorageService.instance.clearGameProgress();
+
     _initializeLetters();
     emit(state.copyWith(
       timeRemaining: GameConfig.startingTime,
@@ -75,6 +124,23 @@ class GameCubit extends Cubit<GameState> {
       clearPendingMysteryOrb: true,
       clearMysteryOrbDwellStartTime: true,
     ));
+  }
+
+  /// Save game progress for later resumption
+  Future<void> _saveProgress({
+    required int letterRound,
+    required List<String> completedLetters,
+    required int score,
+    required int timeRemaining,
+    required int hintsRemaining,
+  }) async {
+    await StorageService.instance.saveGameProgress(
+      letterRound: letterRound,
+      completedLetters: completedLetters,
+      score: score,
+      timeRemaining: timeRemaining,
+      hintsRemaining: hintsRemaining,
+    );
   }
 
   /// Start the countdown timer
@@ -1298,6 +1364,15 @@ class GameCubit extends Cubit<GameState> {
     AudioService.instance.play(GameSound.roundComplete);
     HapticService.instance.success();
 
+    // Save progress for resume feature
+    _saveProgress(
+      letterRound: state.letterRound + 1,
+      completedLetters: newCompletedLetters,
+      score: newScore,
+      timeRemaining: state.timeRemaining,
+      hintsRemaining: state.hintsRemaining + 1, // Account for bonus hint
+    );
+
     // Show letter complete celebration screen
     // Timer is paused, showing current time (deduction happens when continuing)
     emit(state.copyWith(
@@ -1384,6 +1459,9 @@ class GameCubit extends Cubit<GameState> {
       AudioService.instance.play(GameSound.gameLose);
       HapticService.instance.warning();
     }
+
+    // Clear saved progress - game is over
+    StorageService.instance.clearGameProgress();
 
     // Save game session to local storage
     _saveGameSession(score, isWinner);

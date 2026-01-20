@@ -346,88 +346,146 @@ class _GameBodyState extends State<GameBody> with TickerProviderStateMixin {
   }
 
   Widget _buildStartScreen(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            'ALPHA QUEST',
-            style: GoogleFonts.orbitron(
-              color: AppColors.accentGold,
-              fontSize: 36,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 4,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Complete all 25 letters\nTime carries over - bonus for x2 & spaces!',
-            textAlign: TextAlign.center,
-            style: GoogleFonts.exo2(
-              color: Colors.white.withAlpha(200),
-              fontSize: 16,
-            ),
-          ),
-          const SizedBox(height: 48),
-          GestureDetector(
-            onTap: () => context.read<GameCubit>().startGame(),
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 48,
-                vertical: 16,
-              ),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [AppColors.accentGold, AppColors.accentOrange],
+    return FutureBuilder<SavedGameProgress?>(
+      future: context.read<GameCubit>().getSavedProgress(),
+      builder: (context, snapshot) {
+        final savedProgress = snapshot.data;
+        final hasSavedProgress = savedProgress != null;
+
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'ALPHA QUEST',
+                style: GoogleFonts.orbitron(
+                  color: AppColors.accentGold,
+                  fontSize: 36,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 4,
                 ),
-                borderRadius: BorderRadius.circular(30),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.accentGold.withAlpha(100),
-                    blurRadius: 20,
-                    spreadRadius: 2,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Complete all 25 letters\nTime carries over - bonus for x2 & spaces!',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.exo2(
+                  color: Colors.white.withAlpha(200),
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 48),
+
+              // Resume button (shown when saved progress exists)
+              if (hasSavedProgress) ...[
+                GestureDetector(
+                  onTap: () => context.read<GameCubit>().resumeGame(),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 48,
+                      vertical: 16,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [AppColors.accentCyan, AppColors.accentPurple],
+                      ),
+                      borderRadius: BorderRadius.circular(30),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.accentCyan.withAlpha(100),
+                          blurRadius: 20,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'RESUME',
+                          style: GoogleFonts.orbitron(
+                            color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Round ${savedProgress.letterRound} · ${savedProgress.completedLetters.length}/25 letters',
+                          style: GoogleFonts.exo2(
+                            color: Colors.white.withAlpha(200),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ],
-              ),
-              child: Text(
-                'START',
-                style: GoogleFonts.orbitron(
-                  color: AppColors.black,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              // New Game button
+              GestureDetector(
+                onTap: () => context.read<GameCubit>().startGame(),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 48,
+                    vertical: 16,
+                  ),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [AppColors.accentGold, AppColors.accentOrange],
+                    ),
+                    borderRadius: BorderRadius.circular(30),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.accentGold.withAlpha(100),
+                        blurRadius: 20,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    hasSavedProgress ? 'NEW GAME' : 'START',
+                    style: GoogleFonts.orbitron(
+                      color: AppColors.black,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ),
-            ),
+              const SizedBox(height: 16),
+              // Cancel button
+              GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 48,
+                    vertical: 16,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withAlpha(20),
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(
+                      color: Colors.white.withAlpha(100),
+                      width: 2,
+                    ),
+                  ),
+                  child: Text(
+                    'CANCEL',
+                    style: GoogleFonts.orbitron(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
-          // Cancel button
-          GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 48,
-                vertical: 16,
-              ),
-              decoration: BoxDecoration(
-                color: Colors.white.withAlpha(20),
-                borderRadius: BorderRadius.circular(30),
-                border: Border.all(
-                  color: Colors.white.withAlpha(100),
-                  width: 2,
-                ),
-              ),
-              child: Text(
-                'CANCEL',
-                style: GoogleFonts.orbitron(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -1024,6 +1082,9 @@ class _GameBodyState extends State<GameBody> with TickerProviderStateMixin {
   }
 
   void _showExitConfirmation(BuildContext context) {
+    final state = context.read<GameCubit>().state;
+    final hasCompletedLetters = state.completedLetters.isNotEmpty;
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1037,7 +1098,9 @@ class _GameBodyState extends State<GameBody> with TickerProviderStateMixin {
           style: GoogleFonts.orbitron(color: AppColors.white),
         ),
         content: Text(
-          'Your progress will be lost.',
+          hasCompletedLetters
+              ? 'Your progress is saved. You can resume later.'
+              : 'Your progress will be lost.',
           style: GoogleFonts.exo2(color: AppColors.white.withAlpha(200)),
         ),
         actions: [
