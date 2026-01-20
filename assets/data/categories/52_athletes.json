@@ -1,0 +1,33 @@
+{
+  "id": 52,
+  "name": "Athletes",
+  "difficulty": 1,
+  "words": {
+    "A": ["ALI", "AARON", "AGASSI", "AGUERO", "ALLEN IVERSON", "ANDRE AGASSI", "ANTHONY DAVIS", "ANZE KOPITAR"],
+    "B": ["BECKHAM", "BOLT", "BRADY", "BRYANT", "BREES", "BENZEMA", "BARKLEY", "BIRD", "BILES", "BURROW"],
+    "C": ["CURRY", "CRISTIANO", "CROSBY", "CAM NEWTON", "CAITLIN CLARK"],
+    "D": ["DJOKOVIC", "DROGBA", "DURANT", "DEREK JETER", "DWYANE WADE", "DONCIC"],
+    "E": ["ERVING", "EMBIID", "ELI MANNING", "EDSON PELE"],
+    "F": ["FEDERER", "FAVRE", "FIGO"],
+    "G": ["GRETZKY", "GRIEZMANN", "GIANNIS", "GRONK", "GRIFFEY"],
+    "H": ["HAALAND", "HAMILTON", "HAZARD", "HARDEN"],
+    "I": ["IVERSON", "INIESTA", "IBRAHIMOVIC"],
+    "J": ["JORDAN", "JAMES", "JETER", "JIMMY BUTLER"],
+    "K": ["KOBE", "KANE", "KERSHAW", "KYRIE", "KELCE", "KAEPERNICK", "KAWHI"],
+    "L": ["LEBRON", "LEWANDOWSKI", "LUKA", "LILLARD", "LYNCH"],
+    "M": ["MESSI", "MBAPPE", "MAHOMES", "MANNING", "MARADONA", "MAYS", "MCGREGOR", "MIKE TYSON", "MONTANA"],
+    "N": ["NADAL", "NEYMAR", "NAOMI OSAKA", "NICK FOLES"],
+    "O": ["OHTANI", "OVECHKIN", "OZIL", "ONEAL"],
+    "P": ["PELE", "POGBA", "PHELPS", "PAYTON", "PIPPEN", "PULISIC"],
+    "Q": ["QUINN EWERS", "QUINN HUGHES"],
+    "R": ["RONALDO", "ROONEY", "RODGERS", "RUTH", "RODMAN", "RAMOS", "RICE"],
+    "S": ["SERENA", "SALAH", "STEPH", "SHAQ", "SUAREZ", "SIMONE BILES"],
+    "T": ["TIGER", "TATUM", "TOTTI", "TROUT", "TOM BRADY", "TYSON"],
+    "U": ["USAIN BOLT"],
+    "V": ["VENUS", "VINICIUS", "VAN DIJK", "VICK"],
+    "W": ["WILLIAMS", "WADE", "WATT", "WESTBROOK"],
+    "X": ["XAVI", "XHAKA"],
+    "Y": ["YAMAL", "YOGI BERRA"],
+    "Z": ["ZIDANE", "ZLATAN", "ZION"]
+  }
+}
