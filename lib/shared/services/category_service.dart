@@ -126,6 +126,16 @@ class CategoryService {
     '48_toys_and_games.json',
     '49_disney_characters.json',
     '50_around_the_house.json',
+    '51_cars.json',
+    '52_athletes.json',
+    '53_brands.json',
+    '54_cartoons.json',
+    '55_junk_food.json',
+    '56_names.json',
+    '57_tv_characters.json',
+    '58_rappers.json',
+    '59_nba_players.json',
+    '60_anime.json',
   ];
 
   /// Initialize and load categories from assets

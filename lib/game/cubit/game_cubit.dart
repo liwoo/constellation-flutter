@@ -1364,14 +1364,7 @@ class GameCubit extends Cubit<GameState> {
     AudioService.instance.play(GameSound.roundComplete);
     HapticService.instance.success();
 
-    // Save progress for resume feature
-    _saveProgress(
-      letterRound: state.letterRound + 1,
-      completedLetters: newCompletedLetters,
-      score: newScore,
-      timeRemaining: state.timeRemaining,
-      hintsRemaining: state.hintsRemaining + 1, // Account for bonus hint
-    );
+    // Note: Progress is saved in continueToNextRound() after time bonus is calculated
 
     // Show letter complete celebration screen
     // Timer is paused, showing current time (deduction happens when continuing)
@@ -1405,9 +1398,20 @@ class GameCubit extends Cubit<GameState> {
     final adjustedTime = (time * timeMultiplier).round();
     final newTime = adjustedTime + roundScore;
 
+    final nextRound = state.letterRound + 1;
+
+    // Save progress with the actual calculated time for next round
+    _saveProgress(
+      letterRound: nextRound,
+      completedLetters: state.completedLetters,
+      score: state.score,
+      timeRemaining: newTime,
+      hintsRemaining: state.hintsRemaining,
+    );
+
     // Move to next letter round - timer stays paused until wheel lands
     emit(state.copyWith(
-      letterRound: state.letterRound + 1,
+      letterRound: nextRound,
       timeRemaining: newTime,
       clearLastAnswerCorrect: true,
       phase: GamePhase.spinningWheel,
