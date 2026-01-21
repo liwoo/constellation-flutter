@@ -1462,6 +1462,9 @@ class GameCubit extends Cubit<GameState> {
       timeBonus += TimeConfig.pureConnectionBonus;
     }
 
+    // Round completion bonus (15 seconds for every completed round)
+    timeBonus += 15;
+
     final newTime = state.timeRemaining + timeBonus;
 
     // Dramatic haptic feedback for pure connection, simpler for regular time bonus
