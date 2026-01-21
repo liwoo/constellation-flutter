@@ -221,9 +221,9 @@ class GameCubit extends Cubit<GameState> {
   }
 
   /// Generate letter nodes only for letters needed in this round
-  /// Uses randomized grid placement (not QWERTY)
+  /// Uses PATH-CLEARANCE OPTIMIZATION: random placement but pushes
+  /// non-target letters away from paths between target word letters
   /// Mystery orbs REPLACE actual letters (prioritizing vowels) - like Scrabble blanks
-  /// This forces players to use mystery orbs as wildcards to complete words
   ({List<LetterNode> letters, List<MysteryOrb> mysteryOrbs}) _generateLettersAndMysteryOrbs(String category, String letter) {
     final neededLetters = _getLettersForRound(category, letter).toList();
     neededLetters.sort(); // Sort alphabetically for consistent IDs
@@ -259,87 +259,262 @@ class GameCubit extends Cubit<GameState> {
     // Remove replaced letters from the needed letters list
     final remainingLetters = neededLetters.where((l) => !lettersToReplace.contains(l)).toList();
 
+    // Get target words for path clearance optimization
+    final validWords = _dictionary.getWordsForCategoryAndLetter(category, letter);
+    final targetWords = _getShortestTargetWords(validWords, 3);
+
+    // All items to place (letters + mystery orb placeholders)
+    final allItems = [...remainingLetters, ...lettersToReplace];
+
+    // Generate positions with path clearance optimization
+    final positions = _generatePositionsWithPathClearance(
+      allItems,
+      targetWords,
+    );
+
     final letters = <LetterNode>[];
     final mysteryOrbs = <MysteryOrb>[];
 
-    // Total items stays the same (mystery orbs replace letters, not add to them)
-    final totalItems = neededLetters.length; // Same count as original
-
-    // Grid configuration based on total number of items
-    final cols = totalItems <= 9 ? 3 : (totalItems <= 16 ? 4 : (totalItems <= 25 ? 5 : 6));
-    final rows = (totalItems / cols).ceil();
-
-    // Padding from edges
-    const paddingX = 0.08;
-    const paddingY = 0.08;
-
-    // Available area
-    const availableWidth = 1.0 - (paddingX * 2);
-    const availableHeight = 0.84 - paddingY;
-
-    // Cell size
-    final cellWidth = availableWidth / cols;
-    final cellHeight = availableHeight / rows;
-
-    // Jitter amount (randomness within cell)
-    final jitterX = cellWidth * 0.20;
-    final jitterY = cellHeight * 0.20;
-
-    // Generate grid positions for ALL items
-    final gridPositions = <Offset>[];
-    for (int row = 0; row < rows; row++) {
-      for (int col = 0; col < cols; col++) {
-        if (gridPositions.length >= totalItems) break;
-
-        // Calculate base position (center of cell)
-        final baseX = paddingX + (col + 0.5) * cellWidth;
-        final baseY = paddingY + (row + 0.5) * cellHeight;
-
-        // Add jitter
-        final x = baseX + (_random.nextDouble() - 0.5) * 2 * jitterX;
-        final y = baseY + (_random.nextDouble() - 0.5) * 2 * jitterY;
-
-        gridPositions.add(Offset(
-          x.clamp(paddingX, 1.0 - paddingX),
-          y.clamp(paddingY, 0.84),
-        ));
-      }
-    }
-
-    // Shuffle positions for random placement
-    gridPositions.shuffle(_random);
-
-    // Create letter nodes for remaining letters
-    int positionIndex = 0;
+    // Create letter nodes
     for (final letterChar in remainingLetters) {
       final points = LetterPoints.values[letterChar] ?? 1;
-      // Use alphabetical index as ID for consistency
       final id = letterChar.codeUnitAt(0) - 'A'.codeUnitAt(0);
 
       letters.add(LetterNode(
         id: id,
         letter: letterChar,
         points: points,
-        position: gridPositions[positionIndex],
+        position: positions[letterChar] ?? const Offset(0.5, 0.5),
       ));
-      positionIndex++;
     }
 
-    // Create mystery orbs that REPLACE the removed letters
-    // Each orb tracks which letter it replaces (for word validation)
+    // Create mystery orbs
     for (int i = 0; i < lettersToReplace.length; i++) {
-      if (positionIndex < gridPositions.length) {
-        mysteryOrbs.add(MysteryOrb(
-          id: 100 + i, // IDs 100+ to avoid conflict with letter IDs
-          position: gridPositions[positionIndex],
-          isActive: true,
-          replacedLetter: lettersToReplace[i], // Track which letter this blank represents
-        ));
-        positionIndex++;
-      }
+      final replacedLetter = lettersToReplace[i];
+      mysteryOrbs.add(MysteryOrb(
+        id: 100 + i,
+        position: positions[replacedLetter] ?? const Offset(0.5, 0.5),
+        isActive: true,
+        replacedLetter: replacedLetter,
+      ));
     }
 
     return (letters: letters, mysteryOrbs: mysteryOrbs);
+  }
+
+  /// Get shortest target words for path optimization
+  List<String> _getShortestTargetWords(List<String> validWords, int count) {
+    if (validWords.isEmpty) return [];
+    final sorted = List<String>.from(validWords)
+      ..sort((a, b) => a.replaceAll(' ', '').length.compareTo(b.replaceAll(' ', '').length));
+    return sorted.take(count).toList();
+  }
+
+  /// Generate positions with path clearance - random but pushes letters away from target paths
+  Map<String, Offset> _generatePositionsWithPathClearance(
+    List<String> allItems,
+    List<String> targetWords,
+  ) {
+    final totalItems = allItems.length;
+    if (totalItems == 0) return {};
+
+    // Layout bounds
+    const paddingX = 0.08;
+    const paddingY = 0.08;
+    const maxY = 0.84;
+
+    // Step 1: Generate initial random grid positions
+    final cols = totalItems <= 9 ? 3 : (totalItems <= 16 ? 4 : (totalItems <= 25 ? 5 : 6));
+    final rows = (totalItems / cols).ceil();
+    final availableWidth = 1.0 - (paddingX * 2);
+    final availableHeight = maxY - paddingY;
+    final cellWidth = availableWidth / cols;
+    final cellHeight = availableHeight / rows;
+    final jitterX = cellWidth * 0.20;
+    final jitterY = cellHeight * 0.20;
+
+    final gridPositions = <Offset>[];
+    for (int row = 0; row < rows; row++) {
+      for (int col = 0; col < cols; col++) {
+        if (gridPositions.length >= totalItems) break;
+        final baseX = paddingX + (col + 0.5) * cellWidth;
+        final baseY = paddingY + (row + 0.5) * cellHeight;
+        final x = baseX + (_random.nextDouble() - 0.5) * 2 * jitterX;
+        final y = baseY + (_random.nextDouble() - 0.5) * 2 * jitterY;
+        gridPositions.add(Offset(
+          x.clamp(paddingX, 1.0 - paddingX),
+          y.clamp(paddingY, maxY),
+        ));
+      }
+    }
+
+    // Shuffle for random initial assignment
+    gridPositions.shuffle(_random);
+
+    // Step 2: Assign letters to positions randomly
+    var positions = <String, Offset>{};
+    for (int i = 0; i < allItems.length; i++) {
+      positions[allItems[i]] = gridPositions[i];
+    }
+
+    // Step 3: If no target words, return random positions
+    if (targetWords.isEmpty) return positions;
+
+    // Step 4: Build path segments from target words
+    final pathSegments = <(Offset, Offset, Set<String>)>[]; // (start, end, lettersInPath)
+    for (final word in targetWords) {
+      final letters = word.toUpperCase().replaceAll(' ', '').split('');
+      final lettersInWord = letters.toSet();
+      for (int i = 0; i < letters.length - 1; i++) {
+        final startLetter = letters[i];
+        final endLetter = letters[i + 1];
+        final startPos = positions[startLetter];
+        final endPos = positions[endLetter];
+        if (startPos != null && endPos != null) {
+          pathSegments.add((startPos, endPos, lettersInWord));
+        }
+      }
+    }
+
+    // Step 5: Iteratively push non-path letters away from corridors
+    const iterations = 12;
+    const corridorWidth = 0.08; // How wide the "clear zone" should be
+    const pushStrength = 0.025;
+    const minSpacing = 0.09; // Minimum distance between any two letters
+
+    for (int iter = 0; iter < iterations; iter++) {
+      final newPositions = <String, Offset>{};
+
+      for (final entry in positions.entries) {
+        final letter = entry.key;
+        var pos = entry.value;
+        var forceX = 0.0;
+        var forceY = 0.0;
+
+        // Check each path segment
+        for (final segment in pathSegments) {
+          final segStart = segment.$1;
+          final segEnd = segment.$2;
+          final lettersInPath = segment.$3;
+
+          // Skip if this letter is part of this word's path
+          if (lettersInPath.contains(letter)) continue;
+
+          // Calculate distance to segment
+          final dist = _pointToSegmentDistance(pos, segStart, segEnd);
+
+          // If within corridor, push away
+          if (dist < corridorWidth) {
+            final pushAmount = pushStrength * (1.0 - dist / corridorWidth);
+            final pushDir = _getPushDirection(pos, segStart, segEnd);
+            forceX += pushDir.dx * pushAmount;
+            forceY += pushDir.dy * pushAmount;
+          }
+        }
+
+        // Also maintain minimum spacing between all letters
+        for (final other in positions.entries) {
+          if (other.key == letter) continue;
+          final dist = _distance(pos, other.value);
+          if (dist < minSpacing && dist > 0.001) {
+            final pushAmount = pushStrength * (1.0 - dist / minSpacing);
+            final dx = pos.dx - other.value.dx;
+            final dy = pos.dy - other.value.dy;
+            final norm = sqrt(dx * dx + dy * dy);
+            if (norm > 0.001) {
+              forceX += (dx / norm) * pushAmount;
+              forceY += (dy / norm) * pushAmount;
+            }
+          }
+        }
+
+        // Apply forces
+        final newX = (pos.dx + forceX).clamp(paddingX, 1.0 - paddingX);
+        final newY = (pos.dy + forceY).clamp(paddingY, maxY);
+        newPositions[letter] = Offset(newX, newY);
+      }
+
+      // Update path segments with new positions for next iteration
+      positions = newPositions;
+      pathSegments.clear();
+      for (final word in targetWords) {
+        final letters = word.toUpperCase().replaceAll(' ', '').split('');
+        final lettersInWord = letters.toSet();
+        for (int i = 0; i < letters.length - 1; i++) {
+          final startLetter = letters[i];
+          final endLetter = letters[i + 1];
+          final startPos = positions[startLetter];
+          final endPos = positions[endLetter];
+          if (startPos != null && endPos != null) {
+            pathSegments.add((startPos, endPos, lettersInWord));
+          }
+        }
+      }
+    }
+
+    return positions;
+  }
+
+  /// Calculate distance from point to line segment
+  double _pointToSegmentDistance(Offset point, Offset segStart, Offset segEnd) {
+    final dx = segEnd.dx - segStart.dx;
+    final dy = segEnd.dy - segStart.dy;
+    final lengthSq = dx * dx + dy * dy;
+
+    if (lengthSq < 0.0001) return _distance(point, segStart);
+
+    var t = ((point.dx - segStart.dx) * dx + (point.dy - segStart.dy) * dy) / lengthSq;
+    t = t.clamp(0.0, 1.0);
+
+    final projX = segStart.dx + t * dx;
+    final projY = segStart.dy + t * dy;
+    return _distance(point, Offset(projX, projY));
+  }
+
+  /// Get direction to push a point away from a segment
+  Offset _getPushDirection(Offset point, Offset segStart, Offset segEnd) {
+    final dx = segEnd.dx - segStart.dx;
+    final dy = segEnd.dy - segStart.dy;
+    final lengthSq = dx * dx + dy * dy;
+
+    if (lengthSq < 0.0001) {
+      // Segment is a point, push directly away
+      final away = Offset(point.dx - segStart.dx, point.dy - segStart.dy);
+      final norm = sqrt(away.dx * away.dx + away.dy * away.dy);
+      if (norm < 0.001) return const Offset(1, 0);
+      return Offset(away.dx / norm, away.dy / norm);
+    }
+
+    // Find closest point on segment
+    var t = ((point.dx - segStart.dx) * dx + (point.dy - segStart.dy) * dy) / lengthSq;
+    t = t.clamp(0.0, 1.0);
+    final closestX = segStart.dx + t * dx;
+    final closestY = segStart.dy + t * dy;
+
+    // Push perpendicular to segment (away from closest point)
+    var pushX = point.dx - closestX;
+    var pushY = point.dy - closestY;
+    final norm = sqrt(pushX * pushX + pushY * pushY);
+
+    if (norm < 0.001) {
+      // Point is on the segment, push perpendicular
+      pushX = -dy;
+      pushY = dx;
+      final perpNorm = sqrt(pushX * pushX + pushY * pushY);
+      if (perpNorm > 0.001) {
+        return Offset(pushX / perpNorm, pushY / perpNorm);
+      }
+      return const Offset(1, 0);
+    }
+
+    return Offset(pushX / norm, pushY / norm);
+  }
+
+  /// Euclidean distance between two points
+  double _distance(Offset a, Offset b) {
+    final dx = a.dx - b.dx;
+    final dy = a.dy - b.dy;
+    return sqrt(dx * dx + dy * dy);
   }
 
   /// Get 5 random categories that have words for the letter

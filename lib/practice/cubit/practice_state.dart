@@ -30,6 +30,49 @@ class PracticeWord {
     }
     return false;
   }
+
+  /// Check if this word has tricky navigation paths on QWERTY layout
+  /// Returns true if consecutive letters have other letters between them
+  bool get hasTrickyNavigation {
+    // QWERTY keyboard layout - positions for detecting adjacency
+    const qwertyRows = [
+      ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
+      ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
+      ['Z', 'X', 'C', 'V', 'B', 'N', 'M'],
+    ];
+
+    // Build position map
+    final positions = <String, (int row, int col)>{};
+    for (int row = 0; row < qwertyRows.length; row++) {
+      for (int col = 0; col < qwertyRows[row].length; col++) {
+        positions[qwertyRows[row][col]] = (row, col);
+      }
+    }
+
+    final upperWord = word.toUpperCase().replaceAll(' ', '');
+    if (upperWord.length < 2) return false;
+
+    // Check if consecutive letters require crossing over other letters
+    for (int i = 0; i < upperWord.length - 1; i++) {
+      final from = upperWord[i];
+      final to = upperWord[i + 1];
+
+      final fromPos = positions[from];
+      final toPos = positions[to];
+      if (fromPos == null || toPos == null) continue;
+
+      // If letters span more than 2 columns on same row, or cross rows diagonally
+      // with significant horizontal distance, there might be interference
+      final rowDiff = (fromPos.$1 - toPos.$1).abs();
+      final colDiff = (fromPos.$2 - toPos.$2).abs();
+
+      // Tricky if: same row but far apart (3+ cols) OR crossing rows with 2+ col distance
+      if (rowDiff == 0 && colDiff >= 3) return true;
+      if (rowDiff >= 1 && colDiff >= 2) return true;
+    }
+
+    return false;
+  }
 }
 
 /// Tutorial types for practice mode
@@ -38,6 +81,8 @@ enum TutorialType {
   spacedWords,
   /// How to spell words with double letters
   doubleLetters,
+  /// How to navigate around interfering letters
+  navigation,
 }
 
 /// Practice phase
@@ -69,6 +114,7 @@ class PracticeState extends Equatable {
     this.showTutorial,
     this.hasSeenDoubleLettersTutorial = false,
     this.hasSeenSpacedWordsTutorial = false,
+    this.hasSeenNavigationTutorial = false,
   });
 
   /// Special ID for space character in selectedLetterIds
@@ -90,6 +136,7 @@ class PracticeState extends Equatable {
   final TutorialType? showTutorial; // Tutorial to show, null if none
   final bool hasSeenDoubleLettersTutorial;
   final bool hasSeenSpacedWordsTutorial;
+  final bool hasSeenNavigationTutorial;
 
   /// Get current target word
   PracticeWord? get currentWord =>
@@ -139,6 +186,7 @@ class PracticeState extends Equatable {
         showTutorial,
         hasSeenDoubleLettersTutorial,
         hasSeenSpacedWordsTutorial,
+        hasSeenNavigationTutorial,
       ];
 
   PracticeState copyWith({
@@ -157,6 +205,7 @@ class PracticeState extends Equatable {
     bool clearTutorial = false,
     bool? hasSeenDoubleLettersTutorial,
     bool? hasSeenSpacedWordsTutorial,
+    bool? hasSeenNavigationTutorial,
   }) {
     return PracticeState(
       letters: letters ?? this.letters,
@@ -175,6 +224,8 @@ class PracticeState extends Equatable {
           hasSeenDoubleLettersTutorial ?? this.hasSeenDoubleLettersTutorial,
       hasSeenSpacedWordsTutorial:
           hasSeenSpacedWordsTutorial ?? this.hasSeenSpacedWordsTutorial,
+      hasSeenNavigationTutorial:
+          hasSeenNavigationTutorial ?? this.hasSeenNavigationTutorial,
     );
   }
 }

@@ -356,7 +356,30 @@ class PracticeBody extends StatelessWidget {
   }
 
   Widget _buildTutorialOverlay(BuildContext context, TutorialType tutorial) {
-    final isDoubleLetters = tutorial == TutorialType.doubleLetters;
+    // Determine tutorial content based on type
+    final (icon, title, explanation, tipIcon, tipText) = switch (tutorial) {
+      TutorialType.doubleLetters => (
+        Icons.repeat,
+        'DOUBLE LETTERS',
+        'This word has double letters\n(like SS in MISSISSIPPI)',
+        'x2',
+        'Tap x2 to repeat\nthe last letter',
+      ),
+      TutorialType.spacedWords => (
+        Icons.space_bar,
+        'MULTI-WORD',
+        'This is a multi-word phrase\n(like ICE CREAM)',
+        '\u2423',
+        'Tap space to add\na space between words',
+      ),
+      TutorialType.navigation => (
+        Icons.route,
+        'TRICKY PATH',
+        'This word has letters far apart.\nOther letters may be in your way!',
+        null, // No button tip for navigation
+        null,
+      ),
+    };
 
     return Container(
       color: AppColors.black.withAlpha(220),
@@ -400,7 +423,7 @@ class PracticeBody extends StatelessWidget {
                   ),
                 ),
                 child: Icon(
-                  isDoubleLetters ? Icons.repeat : Icons.space_bar,
+                  icon,
                   color: Colors.white,
                   size: 36,
                 ),
@@ -409,7 +432,7 @@ class PracticeBody extends StatelessWidget {
 
               // Title
               Text(
-                isDoubleLetters ? 'DOUBLE LETTERS' : 'MULTI-WORD',
+                title,
                 style: GoogleFonts.orbitron(
                   color: AppColors.accentCyan,
                   fontSize: 22,
@@ -421,9 +444,7 @@ class PracticeBody extends StatelessWidget {
 
               // Explanation
               Text(
-                isDoubleLetters
-                    ? 'This word has double letters\n(like SS in MISSISSIPPI)'
-                    : 'This is a multi-word phrase\n(like ICE CREAM)',
+                explanation,
                 textAlign: TextAlign.center,
                 style: GoogleFonts.exo2(
                   color: Colors.white.withAlpha(220),
@@ -433,65 +454,16 @@ class PracticeBody extends StatelessWidget {
               ),
               const SizedBox(height: 20),
 
-              // How to spell it
+              // How to handle it - different content for navigation vs others
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: AppColors.black.withAlpha(100),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Column(
-                  children: [
-                    Text(
-                      'HOW TO SPELL IT:',
-                      style: GoogleFonts.exo2(
-                        color: AppColors.accentGold,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        // Button illustration
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [AppColors.accentGold, AppColors.accentOrange],
-                            ),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            isDoubleLetters ? 'x2' : '\u2423',
-                            style: GoogleFonts.orbitron(
-                              color: AppColors.black,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Flexible(
-                          child: Text(
-                            isDoubleLetters
-                                ? 'Tap x2 to repeat\nthe last letter'
-                                : 'Tap space to add\na space between words',
-                            style: GoogleFonts.exo2(
-                              color: Colors.white.withAlpha(200),
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                child: tutorial == TutorialType.navigation
+                    ? _buildNavigationTips()
+                    : _buildButtonTip(tipIcon!, tipText!),
               ),
 
               const SizedBox(height: 24),
@@ -531,6 +503,124 @@ class PracticeBody extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  /// Build the button tip for double letters and spaced words
+  Widget _buildButtonTip(String buttonLabel, String tipText) {
+    return Column(
+      children: [
+        Text(
+          'HOW TO SPELL IT:',
+          style: GoogleFonts.exo2(
+            color: AppColors.accentGold,
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 8,
+              ),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.accentGold, AppColors.accentOrange],
+                ),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                buttonLabel,
+                style: GoogleFonts.orbitron(
+                  color: AppColors.black,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Flexible(
+              child: Text(
+                tipText,
+                style: GoogleFonts.exo2(
+                  color: Colors.white.withAlpha(200),
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// Build navigation tips for tricky paths
+  Widget _buildNavigationTips() {
+    return Column(
+      children: [
+        Text(
+          'HOW TO NAVIGATE:',
+          style: GoogleFonts.exo2(
+            color: AppColors.accentGold,
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1,
+          ),
+        ),
+        const SizedBox(height: 16),
+        // Tip 1: Slow down
+        _buildNavigationTipRow(
+          Icons.slow_motion_video,
+          'Slow down near your target letter',
+        ),
+        const SizedBox(height: 12),
+        // Tip 2: Curve around
+        _buildNavigationTipRow(
+          Icons.gesture,
+          'Curve around letters in the way',
+        ),
+        const SizedBox(height: 12),
+        // Tip 3: Use DEL
+        _buildNavigationTipRow(
+          Icons.backspace_outlined,
+          'Tap DEL if you select the wrong letter',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNavigationTipRow(IconData icon, String text) {
+    return Row(
+      children: [
+        Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppColors.accentCyan.withAlpha(50),
+          ),
+          child: Icon(
+            icon,
+            color: AppColors.accentCyan,
+            size: 18,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Flexible(
+          child: Text(
+            text,
+            style: GoogleFonts.exo2(
+              color: Colors.white.withAlpha(200),
+              fontSize: 13,
+            ),
+          ),
+        ),
+      ],
     );
   }
 

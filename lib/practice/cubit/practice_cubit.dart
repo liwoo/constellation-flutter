@@ -82,6 +82,8 @@ class PracticeCubit extends Cubit<PracticeState> {
         tutorial = TutorialType.spacedWords;
       } else if (firstWord.hasDoubleLetters && !state.hasSeenDoubleLettersTutorial) {
         tutorial = TutorialType.doubleLetters;
+      } else if (firstWord.hasTrickyNavigation && !state.hasSeenNavigationTutorial) {
+        tutorial = TutorialType.navigation;
       }
     }
 
@@ -110,6 +112,11 @@ class PracticeCubit extends Cubit<PracticeState> {
       emit(state.copyWith(
         clearTutorial: true,
         hasSeenDoubleLettersTutorial: true,
+      ));
+    } else if (state.showTutorial == TutorialType.navigation) {
+      emit(state.copyWith(
+        clearTutorial: true,
+        hasSeenNavigationTutorial: true,
       ));
     } else {
       emit(state.copyWith(clearTutorial: true));
@@ -448,6 +455,8 @@ class PracticeCubit extends Cubit<PracticeState> {
         tutorial = TutorialType.spacedWords;
       } else if (nextWord.hasDoubleLetters && !state.hasSeenDoubleLettersTutorial) {
         tutorial = TutorialType.doubleLetters;
+      } else if (nextWord.hasTrickyNavigation && !state.hasSeenNavigationTutorial) {
+        tutorial = TutorialType.navigation;
       }
 
       emit(state.copyWith(

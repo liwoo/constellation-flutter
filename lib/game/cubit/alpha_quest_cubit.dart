@@ -112,8 +112,8 @@ class AlphaQuestCubit extends Cubit<AlphaQuestState> {
     } else {
       // Prepare for next round
       final nextRound = state.currentRound + 1;
-      // Time formula: previous time - 15 + points earned
-      final newTime = (state.timeRemaining - 15 + wordScore).clamp(0, 999);
+      // Time formula: previous time + points earned + 15s round completion bonus
+      final newTime = (state.timeRemaining + wordScore + 15).clamp(0, 999);
 
       emit(state.copyWith(
         score: newScore,
@@ -161,7 +161,7 @@ class AlphaQuestCubit extends Cubit<AlphaQuestState> {
 
   /// Complete round with specific points (for testing)
   void completeRoundWithPoints(int points) {
-    final newTime = (state.timeRemaining - 15 + points).clamp(0, 999);
+    final newTime = (state.timeRemaining + points + 15).clamp(0, 999);
     emit(state.copyWith(
       timeRemaining: newTime,
       currentRound: state.currentRound + 1,
