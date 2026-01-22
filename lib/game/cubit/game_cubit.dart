@@ -192,6 +192,12 @@ class GameCubit extends Cubit<GameState> {
       state.currentLetter!,
     );
 
+    // Reset all drag/interaction state along with letters for clean start
+    _pendingLetterId = null;
+    _pendingLetterEnteredAt = null;
+    _lastDragPosition = null;
+    _lastDragTime = null;
+
     emit(state.copyWith(
       phase: GamePhase.playingRound,
       selectedLetterIds: [],
@@ -200,6 +206,9 @@ class GameCubit extends Cubit<GameState> {
       mysteryOrbs: result.mysteryOrbs, // Already active, part of the grid
       clearPendingMysteryOrb: true,
       clearMysteryOrbDwellStartTime: true,
+      isDragging: false, // Ensure clean drag state for new category
+      clearDragPosition: true,
+      approachingLetterIds: [],
     ));
   }
 
@@ -1533,6 +1542,9 @@ class GameCubit extends Cubit<GameState> {
           spaceUsageCount: 0, // Reset bonus counts
           repeatUsageCount: 0,
           showConnectionAnimation: false, // Clear animation flag for next word
+          isDragging: false, // Reset drag state for clean transition
+          clearDragPosition: true,
+          approachingLetterIds: [],
         ));
       }
     });

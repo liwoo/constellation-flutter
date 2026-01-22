@@ -150,6 +150,17 @@ class _LetterConstellationState extends State<LetterConstellation>
 
             return GestureDetector(
               behavior: HitTestBehavior.opaque,
+              // Use onTapDown for immediate response to taps (fires before pan recognition)
+              // This fixes the bug where the first letter doesn't respond after category load
+              onTapDown: (details) {
+                final relativePosition = Offset(
+                  details.localPosition.dx / containerSize.width,
+                  details.localPosition.dy / containerSize.height,
+                );
+                widget.onDragStart(relativePosition);
+              },
+              onTapUp: (_) => widget.onDragEnd(),
+              onTapCancel: () => widget.onDragEnd(),
               onPanStart: (details) {
                 final relativePosition = Offset(
                   details.localPosition.dx / containerSize.width,
