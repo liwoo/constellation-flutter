@@ -57,6 +57,12 @@ class TimeConfig {
   /// Time penalty for wrong answer (seconds)
   static const int wrongAnswerPenalty = 5;
 
+  /// Time penalty for selecting invalid letter (seconds)
+  static const int invalidSelectionPenalty = 2;
+
+  /// Time bonus for completing all 5 categories for a letter (seconds)
+  static const int letterCompletionBonus = 15;
+
   /// Time bonus from mystery orb (seconds)
   static const int mysteryTimeBonus = 10;
 

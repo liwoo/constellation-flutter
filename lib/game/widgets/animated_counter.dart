@@ -155,12 +155,14 @@ class CelebrationStatsPanel extends StatelessWidget {
     required this.lettersCompleted,
     required this.timeRemaining,
     required this.pointsEarned,
+    required this.letterCompletionBonus,
   });
 
   final int score;
   final int lettersCompleted;
   final int timeRemaining;
   final int pointsEarned;
+  final int letterCompletionBonus;
 
   @override
   Widget build(BuildContext context) {
@@ -234,6 +236,7 @@ class CelebrationStatsPanel extends StatelessWidget {
           _NextRoundCounter(
             timeRemaining: timeRemaining,
             pointsEarned: pointsEarned,
+            letterCompletionBonus: letterCompletionBonus,
           ),
         ],
       ),
@@ -242,15 +245,17 @@ class CelebrationStatsPanel extends StatelessWidget {
 }
 
 /// Special counter for next round that shows the time bonus animation
-/// Formula: timeRemaining + roundScore
+/// Formula: (timeRemaining × clutchMultiplier) + roundScore + letterCompletionBonus
 class _NextRoundCounter extends StatefulWidget {
   const _NextRoundCounter({
     required this.timeRemaining,
     required this.pointsEarned,
+    required this.letterCompletionBonus,
   });
 
   final int timeRemaining;
   final int pointsEarned;
+  final int letterCompletionBonus;
 
   @override
   State<_NextRoundCounter> createState() => _NextRoundCounterState();
@@ -267,7 +272,7 @@ class _NextRoundCounterState extends State<_NextRoundCounter>
   double get _clutchMultiplier => ClutchConfig.getMultiplier(widget.timeRemaining);
 
   int get _adjustedTime => (widget.timeRemaining * _clutchMultiplier).round();
-  int get _endTime => _adjustedTime + widget.pointsEarned;
+  int get _endTime => _adjustedTime + widget.pointsEarned + widget.letterCompletionBonus;
   int get _totalBonus => _endTime - widget.timeRemaining;
 
   @override
@@ -327,15 +332,16 @@ class _NextRoundCounterState extends State<_NextRoundCounter>
   String get _formulaString {
     final time = widget.timeRemaining;
     final pts = widget.pointsEarned;
+    final bonus = widget.letterCompletionBonus;
     final mult = _clutchMultiplier;
 
     if (mult > ClutchConfig.noMultiplier) {
-      // Show multiplier: "8s × 2 + 65 pts = 81s"
+      // Show multiplier: "8s × 2 + 65 pts + 15s = 96s"
       final multStr = mult == ClutchConfig.doubleMultiplier ? '×2' : '×1.5';
-      return '${time}s $multStr + $pts pts = ${_endTime}s';
+      return '${time}s $multStr + $pts pts + ${bonus}s = ${_endTime}s';
     } else {
-      // No multiplier: "30s + 65 pts = 95s"
-      return '${time}s + $pts pts = ${_endTime}s';
+      // No multiplier: "30s + 65 pts + 15s = 110s"
+      return '${time}s + $pts pts + ${bonus}s = ${_endTime}s';
     }
   }
 

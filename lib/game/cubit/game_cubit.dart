@@ -745,10 +745,17 @@ class GameCubit extends Cubit<GameState> {
           );
 
           if (!isValidPath) {
+            // Penalize invalid selection with time deduction
+            final newTime = (state.timeRemaining - TimeConfig.invalidSelectionPenalty).clamp(0, 999);
+            HapticService.instance.error();
             emit(state.copyWith(
               isDragging: true,
               currentDragPosition: relativePosition,
+              timeRemaining: newTime,
             ));
+            if (newTime <= 0) {
+              _endGame(isWinner: false);
+            }
             return;
           }
         }
@@ -975,11 +982,18 @@ class GameCubit extends Cubit<GameState> {
       );
 
       if (!isValidPath) {
+        // Penalize invalid selection with time deduction
+        final newTime = (state.timeRemaining - TimeConfig.invalidSelectionPenalty).clamp(0, 999);
+        HapticService.instance.error();
         emit(state.copyWith(
           currentDragPosition: position,
           clearPendingMysteryOrb: true,
           clearMysteryOrbDwellStartTime: true,
+          timeRemaining: newTime,
         ));
+        if (newTime <= 0) {
+          _endGame(isWinner: false);
+        }
         return;
       }
     }
@@ -1462,9 +1476,6 @@ class GameCubit extends Cubit<GameState> {
       timeBonus += TimeConfig.pureConnectionBonus;
     }
 
-    // Round completion bonus (15 seconds for every completed round)
-    timeBonus += 15;
-
     final newTime = state.timeRemaining + timeBonus;
 
     // Dramatic haptic feedback for pure connection, simpler for regular time bonus
@@ -1577,7 +1588,8 @@ class GameCubit extends Cubit<GameState> {
     final timeMultiplier = ClutchConfig.getMultiplier(time);
 
     final adjustedTime = (time * timeMultiplier).round();
-    final newTime = adjustedTime + roundScore;
+    // Letter completion bonus for completing all 5 categories
+    final newTime = adjustedTime + roundScore + TimeConfig.letterCompletionBonus;
 
     final nextRound = state.letterRound + 1;
 

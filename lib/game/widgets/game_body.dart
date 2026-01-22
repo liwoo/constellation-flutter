@@ -654,6 +654,7 @@ class _GameBodyState extends State<GameBody>
           lettersCompleted: state.completedLetters.length,
           timeRemaining: state.timeRemaining,
           pointsEarned: state.pointsEarnedInRound,
+          letterCompletionBonus: TimeConfig.letterCompletionBonus,
         ),
 
         const Spacer(flex: 1),
