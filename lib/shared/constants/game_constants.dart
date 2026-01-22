@@ -52,7 +52,7 @@ class TimeConfig {
   static const int spaceTimeBonus = 10;
 
   /// Time bonus for pure connection (seconds)
-  static const int pureConnectionBonus = 10;
+  static const int pureConnectionBonus = 15;
 
   /// Time penalty for wrong answer (seconds)
   static const int wrongAnswerPenalty = 5;
