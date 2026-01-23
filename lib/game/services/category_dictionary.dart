@@ -32,12 +32,11 @@ class CategoryDictionary {
   }
 
   /// Check if a word is valid for the given category and starting letter
+  /// Supports partial name matching - user can type first name, last name, or full name
+  /// e.g., "FERDINAND", "RIO", or "RIO FERDINAND" all match "RIO FERDINAND"
   bool isValidWord(String word, String category, String startingLetter) {
-    final upperWord = word.toUpperCase();
+    final upperWord = word.toUpperCase().replaceAll(' ', '');
     final upperLetter = startingLetter.toUpperCase();
-
-    // Check if word starts with the required letter
-    if (!upperWord.startsWith(upperLetter)) return false;
 
     // Find the category by name
     final categoryObj = _categoryService.getCategoryByName(category);
@@ -46,9 +45,27 @@ class CategoryDictionary {
     // Get words for this letter in this category
     final words = categoryObj.getWordsForLetter(upperLetter);
 
-    // Check if the word matches any word in the category
-    // Use contains check to handle multi-word answers
-    return words.any((validWord) => validWord.toUpperCase() == upperWord);
+    // Check if the word matches any word or part of a word in the category
+    for (final validWord in words) {
+      final upperValidWord = validWord.toUpperCase();
+      final upperValidWordNoSpaces = upperValidWord.replaceAll(' ', '');
+
+      // Exact match (with or without spaces)
+      if (upperValidWordNoSpaces == upperWord) return true;
+
+      // Match any individual part of a multi-word entry (for names like "RIO FERDINAND")
+      // This allows matching "FERDINAND" or "RIO" separately
+      final parts = upperValidWord.split(' ');
+      if (parts.length > 1) {
+        // Check each individual part
+        if (parts.any((part) => part == upperWord)) return true;
+
+        // Also check combinations (e.g., "MICHAELJORDAN" matching "MICHAEL JORDAN")
+        // Already handled by upperValidWordNoSpaces check above
+      }
+    }
+
+    return false;
   }
 
   /// Get all valid words for a category and letter
@@ -75,28 +92,31 @@ class CategoryDictionary {
 
   /// Check if a prefix could lead to a valid word in the category
   /// This enables "smart connections" - only allow letter paths that could form valid words
-  /// For example, if no words in BRANDS start with "BR", B->R connection is blocked
+  /// Supports partial name matching - allows paths to any part of multi-word entries
   bool isValidPrefix(String prefix, String category, String startingLetter) {
     if (prefix.isEmpty) return true;
 
-    final upperPrefix = prefix.toUpperCase();
+    final upperPrefix = prefix.toUpperCase().replaceAll(' ', '');
     final upperLetter = startingLetter.toUpperCase();
-
-    // Prefix must start with the required letter
-    if (!upperPrefix.startsWith(upperLetter)) return false;
 
     // Get all valid words for this letter/category
     final words = getWordsForCategoryAndLetter(category, upperLetter);
     if (words.isEmpty) return false;
 
-    // Check if any word starts with this prefix
-    // Handle multi-word answers by checking each word part and full phrase
+    // Check if any word or word part starts with this prefix
     for (final word in words) {
       final upperWord = word.toUpperCase();
-      // Check if the full word/phrase starts with prefix
-      if (upperWord.startsWith(upperPrefix)) return true;
-      // Also check without spaces (for continuous letter chains)
-      if (upperWord.replaceAll(' ', '').startsWith(upperPrefix.replaceAll(' ', ''))) return true;
+      final upperWordNoSpaces = upperWord.replaceAll(' ', '');
+
+      // Check if the full word/phrase starts with prefix (with or without spaces)
+      if (upperWordNoSpaces.startsWith(upperPrefix)) return true;
+
+      // For multi-word entries, also check if any individual part starts with prefix
+      // This allows typing "FER" to match "FERDINAND" in "RIO FERDINAND"
+      final parts = upperWord.split(' ');
+      if (parts.length > 1) {
+        if (parts.any((part) => part.startsWith(upperPrefix))) return true;
+      }
     }
 
     return false;
