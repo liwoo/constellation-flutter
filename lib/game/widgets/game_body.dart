@@ -40,6 +40,9 @@ class _GameBodyState extends State<GameBody>
   late Animation<double> _mysteryScale;
   MysteryOutcome? _displayedMysteryOutcome;
 
+  // High score tracking
+  int _highScore = 0;
+
   @override
   void initState() {
     super.initState();
@@ -89,6 +92,18 @@ class _GameBodyState extends State<GameBody>
     // Set up shake detection for cheat code
     ShakeDetectionService.instance.onCheatDetected = _onShakeCheatDetected;
     ShakeDetectionService.instance.startListening();
+
+    // Load high score for display
+    _loadHighScore();
+  }
+
+  Future<void> _loadHighScore() async {
+    final highScore = await StorageService.instance.getHighScore();
+    if (mounted) {
+      setState(() {
+        _highScore = highScore;
+      });
+    }
   }
 
   void _onShakeCheatDetected() {
@@ -235,6 +250,15 @@ class _GameBodyState extends State<GameBody>
               current.lastMysteryOutcome != null,
           listener: (context, state) {
             _showMysteryOutcome(state.lastMysteryOutcome!);
+          },
+        ),
+        // Reload high score when game ends (in case new record was set)
+        BlocListener<GameCubit, GameState>(
+          listenWhen: (previous, current) =>
+              previous.phase != GamePhase.gameOver &&
+              current.phase == GamePhase.gameOver,
+          listener: (context, state) {
+            _loadHighScore();
           },
         ),
       ],
@@ -1055,54 +1079,72 @@ class _GameBodyState extends State<GameBody>
             ],
           ),
 
-          // Center: Score display (expanded to center it)
+          // Center: Score display with high score (expanded to center it)
           Expanded(
             child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.md,
-                  vertical: AppSpacing.xs,
-                ),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [
-                      AppColors.accentGold,
-                      AppColors.accentOrange,
-                    ],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // High score target (always visible)
+                  Text(
+                    'BEST: $_highScore',
+                    style: GoogleFonts.exo2(
+                      color: state.score > _highScore
+                          ? AppColors.accentGold
+                          : Colors.white.withAlpha(150),
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1,
+                    ),
                   ),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.black.withAlpha(60),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
+                  const SizedBox(height: 2),
+                  // Current score
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.md,
+                      vertical: AppSpacing.xs,
                     ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'SCORE',
-                      style: TextStyle(
-                        color: AppColors.black.withAlpha(150),
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: state.score > _highScore
+                            ? [AppColors.accentGold, AppColors.accentOrange]
+                            : [AppColors.accentGold.withAlpha(200), AppColors.accentOrange.withAlpha(200)],
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
                       ),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.black.withAlpha(60),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
                     ),
-                    Text(
-                      '${state.score}',
-                      style: const TextStyle(
-                        color: AppColors.black,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'SCORE',
+                          style: TextStyle(
+                            color: AppColors.black.withAlpha(150),
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1,
+                          ),
+                        ),
+                        Text(
+                          '${state.score}',
+                          style: const TextStyle(
+                            color: AppColors.black,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),
