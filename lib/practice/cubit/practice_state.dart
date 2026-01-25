@@ -77,6 +77,8 @@ class PracticeWord {
 
 /// Tutorial types for practice mode
 enum TutorialType {
+  /// How the drag connection indicators work (shown first)
+  dragIndicators,
   /// How to spell words with spaces (multi-word)
   spacedWords,
   /// How to spell words with double letters
@@ -112,6 +114,7 @@ class PracticeState extends Equatable {
     this.currentDragPosition,
     this.showSuccess = false,
     this.showTutorial,
+    this.hasSeenDragIndicatorsTutorial = false,
     this.hasSeenDoubleLettersTutorial = false,
     this.hasSeenSpacedWordsTutorial = false,
     this.hasSeenNavigationTutorial = false,
@@ -134,6 +137,7 @@ class PracticeState extends Equatable {
   final Offset? currentDragPosition;
   final bool showSuccess;
   final TutorialType? showTutorial; // Tutorial to show, null if none
+  final bool hasSeenDragIndicatorsTutorial;
   final bool hasSeenDoubleLettersTutorial;
   final bool hasSeenSpacedWordsTutorial;
   final bool hasSeenNavigationTutorial;
@@ -184,6 +188,7 @@ class PracticeState extends Equatable {
         currentDragPosition,
         showSuccess,
         showTutorial,
+        hasSeenDragIndicatorsTutorial,
         hasSeenDoubleLettersTutorial,
         hasSeenSpacedWordsTutorial,
         hasSeenNavigationTutorial,
@@ -203,6 +208,7 @@ class PracticeState extends Equatable {
     bool? showSuccess,
     TutorialType? showTutorial,
     bool clearTutorial = false,
+    bool? hasSeenDragIndicatorsTutorial,
     bool? hasSeenDoubleLettersTutorial,
     bool? hasSeenSpacedWordsTutorial,
     bool? hasSeenNavigationTutorial,
@@ -220,6 +226,8 @@ class PracticeState extends Equatable {
           clearDragPosition ? null : (currentDragPosition ?? this.currentDragPosition),
       showSuccess: showSuccess ?? this.showSuccess,
       showTutorial: clearTutorial ? null : (showTutorial ?? this.showTutorial),
+      hasSeenDragIndicatorsTutorial:
+          hasSeenDragIndicatorsTutorial ?? this.hasSeenDragIndicatorsTutorial,
       hasSeenDoubleLettersTutorial:
           hasSeenDoubleLettersTutorial ?? this.hasSeenDoubleLettersTutorial,
       hasSeenSpacedWordsTutorial:

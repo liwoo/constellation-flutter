@@ -358,6 +358,13 @@ class PracticeBody extends StatelessWidget {
   Widget _buildTutorialOverlay(BuildContext context, TutorialType tutorial) {
     // Determine tutorial content based on type
     final (icon, title, explanation, tipIcon, tipText) = switch (tutorial) {
+      TutorialType.dragIndicators => (
+        Icons.touch_app,
+        'HOW TO CONNECT',
+        'Drag your finger across the letters\nto spell words',
+        null, // Uses custom tips section
+        null,
+      ),
       TutorialType.doubleLetters => (
         Icons.repeat,
         'DOUBLE LETTERS',
@@ -454,16 +461,18 @@ class PracticeBody extends StatelessWidget {
               ),
               const SizedBox(height: 20),
 
-              // How to handle it - different content for navigation vs others
+              // How to handle it - different content based on tutorial type
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: AppColors.black.withAlpha(100),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: tutorial == TutorialType.navigation
-                    ? _buildNavigationTips()
-                    : _buildButtonTip(tipIcon!, tipText!),
+                child: switch (tutorial) {
+                  TutorialType.dragIndicators => _buildDragIndicatorsTips(),
+                  TutorialType.navigation => _buildNavigationTips(),
+                  _ => _buildButtonTip(tipIcon!, tipText!),
+                },
               ),
 
               const SizedBox(height: 24),
@@ -589,6 +598,47 @@ class PracticeBody extends StatelessWidget {
         _buildNavigationTipRow(
           Icons.backspace_outlined,
           'Tap DEL if you select the wrong letter',
+        ),
+      ],
+    );
+  }
+
+  /// Build drag indicators tips for connection tutorial
+  Widget _buildDragIndicatorsTips() {
+    return Column(
+      children: [
+        Text(
+          'VISUAL INDICATORS:',
+          style: GoogleFonts.exo2(
+            color: AppColors.accentGold,
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1,
+          ),
+        ),
+        const SizedBox(height: 16),
+        // Tip 1: Approaching glow
+        _buildNavigationTipRow(
+          Icons.lightbulb_outline,
+          'Letters glow and grow when you approach',
+        ),
+        const SizedBox(height: 12),
+        // Tip 2: Dwell progress
+        _buildNavigationTipRow(
+          Icons.timelapse,
+          'A ring fills up - hold still to connect',
+        ),
+        const SizedBox(height: 12),
+        // Tip 3: Connection flash
+        _buildNavigationTipRow(
+          Icons.flash_on,
+          'Letters flash when successfully connected',
+        ),
+        const SizedBox(height: 12),
+        // Tip 4: Line follows
+        _buildNavigationTipRow(
+          Icons.timeline,
+          'A line traces your path between letters',
         ),
       ],
     );

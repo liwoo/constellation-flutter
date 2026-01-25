@@ -126,8 +126,9 @@ class GameCubit extends Cubit<GameState> {
       clearLastMysteryOutcome: true,
       clearPendingMysteryOrb: true,
       clearMysteryOrbDwellStartTime: true,
-      // Reset cheat code
+      // Reset cheat code and hint tracking
       skipCheatUsedThisRound: false,
+      clearUsedHintWords: true,
     ));
   }
 
@@ -1235,16 +1236,24 @@ class GameCubit extends Cubit<GameState> {
     final round = state.letterRound;
     final maxLength = HintConfig.getMaxHintLength(round);
 
-    // Filter words by max length (count letters only, not spaces)
+    // Get words already shown as hints for this category
+    final alreadyUsedHints = state.usedHintWords[state.category] ?? [];
+
+    // Filter words by max length and exclude already-used hints
     var eligibleWords = allWords.where((w) {
       final letterCount = w.replaceAll(' ', '').length;
-      return letterCount <= maxLength;
+      final notUsed = !alreadyUsedHints.contains(w.toUpperCase());
+      return letterCount <= maxLength && notUsed;
     }).toList();
 
-    // If no words fit the length limit, fall back to shortest available
+    // If no words fit the length limit, fall back to shortest available (excluding used hints)
     if (eligibleWords.isEmpty) {
+      // Filter out already-used hints first
+      final unusedWords = allWords.where((w) => !alreadyUsedHints.contains(w.toUpperCase())).toList();
+      if (unusedWords.isEmpty) return false; // All words already shown as hints
+
       // Sort by length and take the shortest ones
-      final sorted = List<String>.from(allWords)
+      final sorted = List<String>.from(unusedWords)
         ..sort((a, b) => a.replaceAll(' ', '').length.compareTo(b.replaceAll(' ', '').length));
       final shortestLength = sorted.first.replaceAll(' ', '').length;
       eligibleWords = sorted.where((w) => w.replaceAll(' ', '').length == shortestLength).toList();
@@ -1273,12 +1282,19 @@ class GameCubit extends Cubit<GameState> {
     // Deduct 10 seconds for using a hint
     final newTime = state.timeRemaining - _hintTimeCost;
 
+    // Track this hint word as used for this category
+    final updatedUsedHints = Map<String, List<String>>.from(state.usedHintWords);
+    final categoryHints = List<String>.from(updatedUsedHints[state.category] ?? []);
+    categoryHints.add(hintWord.toUpperCase());
+    updatedUsedHints[state.category] = categoryHints;
+
     emit(state.copyWith(
       hintsRemaining: state.hintsRemaining - 1,
       hintWord: hintWord,
       hintLetterIds: hintLetterIds,
       hintAnimationIndex: 0,
       timeRemaining: newTime,
+      usedHintWords: updatedUsedHints,
     ));
 
     // Animate through the sequence with delays
@@ -1608,6 +1624,7 @@ class GameCubit extends Cubit<GameState> {
       categoryIndex: 0,
       isPlaying: false, // Timer paused until wheel lands
       skipCheatUsedThisRound: false, // Reset cheat for new letter round
+      clearUsedHintWords: true, // Reset hint tracking for new letter round
     ));
     // Note: Timer will start in onWheelLanded()
   }
@@ -1708,8 +1725,9 @@ class GameCubit extends Cubit<GameState> {
       clearLastMysteryOutcome: true,
       clearPendingMysteryOrb: true,
       clearMysteryOrbDwellStartTime: true,
-      // Reset cheat code
+      // Reset cheat code and hint tracking
       skipCheatUsedThisRound: false,
+      clearUsedHintWords: true,
     ));
   }
 

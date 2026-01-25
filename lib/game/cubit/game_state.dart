@@ -118,6 +118,7 @@ class GameState extends Equatable {
     this.hintWord, // Word currently being shown as hint (internal)
     this.hintLetterIds = const [], // Letter node IDs in order for hint animation
     this.hintAnimationIndex = 0, // Current index in hint animation sequence
+    this.usedHintWords = const {}, // Words already shown as hints per category this letter round
     // Predictive highlighting (letters in drag direction)
     this.approachingLetterIds = const [],
     // Pure connection tracking - true if word built in single drag
@@ -180,6 +181,7 @@ class GameState extends Equatable {
   final String? hintWord; // Word currently being shown as hint (internal)
   final List<int> hintLetterIds; // Letter node IDs in order for hint animation
   final int hintAnimationIndex; // Current index in hint animation sequence
+  final Map<String, List<String>> usedHintWords; // Words already shown as hints per category
 
   // Predictive highlighting - letters in the direction user is dragging
   final List<int> approachingLetterIds;
@@ -288,6 +290,7 @@ class GameState extends Equatable {
         hintWord,
         hintLetterIds,
         hintAnimationIndex,
+        usedHintWords,
         approachingLetterIds,
         isPureConnection,
         showConnectionAnimation,
@@ -336,6 +339,8 @@ class GameState extends Equatable {
     bool clearHintWord = false,
     List<int>? hintLetterIds,
     int? hintAnimationIndex,
+    Map<String, List<String>>? usedHintWords,
+    bool clearUsedHintWords = false,
     List<int>? approachingLetterIds,
     bool? isPureConnection,
     bool? showConnectionAnimation,
@@ -384,6 +389,7 @@ class GameState extends Equatable {
       hintWord: clearHintWord ? null : (hintWord ?? this.hintWord),
       hintLetterIds: clearHintWord ? const [] : (hintLetterIds ?? this.hintLetterIds),
       hintAnimationIndex: clearHintWord ? 0 : (hintAnimationIndex ?? this.hintAnimationIndex),
+      usedHintWords: clearUsedHintWords ? const {} : (usedHintWords ?? this.usedHintWords),
       approachingLetterIds: approachingLetterIds ?? this.approachingLetterIds,
       isPureConnection: isPureConnection ?? this.isPureConnection,
       showConnectionAnimation: showConnectionAnimation ?? this.showConnectionAnimation,

@@ -64,8 +64,11 @@ class PracticeCubit extends Cubit<PracticeState> {
     final sessionWords = _selectSessionWords();
 
     // Check if first word needs a tutorial
+    // Show drag indicators tutorial first (on very first practice session)
     TutorialType? tutorial;
-    if (sessionWords.isNotEmpty) {
+    if (!state.hasSeenDragIndicatorsTutorial) {
+      tutorial = TutorialType.dragIndicators;
+    } else if (sessionWords.isNotEmpty) {
       final firstWord = sessionWords[0];
       if (firstWord.isMultiWord && !state.hasSeenSpacedWordsTutorial) {
         tutorial = TutorialType.spacedWords;
@@ -98,7 +101,12 @@ class PracticeCubit extends Cubit<PracticeState> {
   /// Dismiss the tutorial modal
   void dismissTutorial() {
     // Mark the tutorial type as seen
-    if (state.showTutorial == TutorialType.spacedWords) {
+    if (state.showTutorial == TutorialType.dragIndicators) {
+      emit(state.copyWith(
+        clearTutorial: true,
+        hasSeenDragIndicatorsTutorial: true,
+      ));
+    } else if (state.showTutorial == TutorialType.spacedWords) {
       emit(state.copyWith(
         clearTutorial: true,
         hasSeenSpacedWordsTutorial: true,
