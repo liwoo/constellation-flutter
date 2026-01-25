@@ -130,6 +130,10 @@ class GameState extends Equatable {
     this.lastMysteryOutcome, // For animation feedback
     this.pendingMysteryOrbId, // Orb being hovered over
     this.mysteryOrbDwellStartTime, // When dwell started on mystery orb
+    // Letter dwell progress for visual feedback
+    this.pendingLetterId, // Letter currently being dwelled on
+    this.letterDwellStartTime, // When dwell started on letter
+    this.lastConnectedLetterId, // For "just connected" flash animation
   });
 
   /// Special ID for space character in selectedLetterIds
@@ -189,6 +193,11 @@ class GameState extends Equatable {
   final MysteryOutcome? lastMysteryOutcome; // For animation feedback
   final int? pendingMysteryOrbId; // Orb currently being hovered
   final DateTime? mysteryOrbDwellStartTime; // When dwell started
+
+  // Letter dwell progress tracking for visual feedback
+  final int? pendingLetterId; // Letter currently being dwelled on
+  final DateTime? letterDwellStartTime; // When dwell started on letter
+  final int? lastConnectedLetterId; // For "just connected" flash animation
 
   /// Points earned in current letter round
   int get pointsEarnedInRound => score - letterRoundStartScore;
@@ -283,6 +292,9 @@ class GameState extends Equatable {
         lastMysteryOutcome,
         pendingMysteryOrbId,
         mysteryOrbDwellStartTime,
+        pendingLetterId,
+        letterDwellStartTime,
+        lastConnectedLetterId,
       ];
 
   GameState copyWith({
@@ -330,6 +342,12 @@ class GameState extends Equatable {
     bool clearPendingMysteryOrb = false,
     DateTime? mysteryOrbDwellStartTime,
     bool clearMysteryOrbDwellStartTime = false,
+    int? pendingLetterId,
+    bool clearPendingLetterId = false,
+    DateTime? letterDwellStartTime,
+    bool clearLetterDwellStartTime = false,
+    int? lastConnectedLetterId,
+    bool clearLastConnectedLetterId = false,
   }) {
     return GameState(
       letters: letters ?? this.letters,
@@ -368,6 +386,9 @@ class GameState extends Equatable {
       lastMysteryOutcome: clearLastMysteryOutcome ? null : (lastMysteryOutcome ?? this.lastMysteryOutcome),
       pendingMysteryOrbId: clearPendingMysteryOrb ? null : (pendingMysteryOrbId ?? this.pendingMysteryOrbId),
       mysteryOrbDwellStartTime: clearMysteryOrbDwellStartTime ? null : (mysteryOrbDwellStartTime ?? this.mysteryOrbDwellStartTime),
+      pendingLetterId: clearPendingLetterId ? null : (pendingLetterId ?? this.pendingLetterId),
+      letterDwellStartTime: clearLetterDwellStartTime ? null : (letterDwellStartTime ?? this.letterDwellStartTime),
+      lastConnectedLetterId: clearLastConnectedLetterId ? null : (lastConnectedLetterId ?? this.lastConnectedLetterId),
     );
   }
 }

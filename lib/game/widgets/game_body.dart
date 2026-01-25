@@ -756,9 +756,12 @@ class _GameBodyState extends State<GameBody>
         // Word display area
         WordDisplayArea(
           selectedLetters: state.selectedLetters,
+          letters: state.letters,
           committedWord: state.committedWord,
           celebrate: state.lastAnswerCorrect == true,
           shake: state.lastAnswerCorrect == false,
+          pendingLetterId: state.pendingLetterId,
+          letterDwellStartTime: state.letterDwellStartTime,
         ),
 
         const SizedBox(height: AppSpacing.sm),
@@ -782,6 +785,10 @@ class _GameBodyState extends State<GameBody>
               mysteryOrbs: state.mysteryOrbs,
               pendingMysteryOrbId: state.pendingMysteryOrbId,
               mysteryOrbDwellStartTime: state.mysteryOrbDwellStartTime,
+              // Letter dwell progress
+              pendingLetterId: state.pendingLetterId,
+              letterDwellStartTime: state.letterDwellStartTime,
+              lastConnectedLetterId: state.lastConnectedLetterId,
               // Pure connection celebration
               showConnectionAnimation: state.showConnectionAnimation,
               onDragStart: (pos) {

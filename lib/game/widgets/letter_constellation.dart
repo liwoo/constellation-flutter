@@ -22,6 +22,10 @@ class LetterConstellation extends StatefulWidget {
     this.mysteryOrbs = const [],
     this.pendingMysteryOrbId,
     this.mysteryOrbDwellStartTime,
+    // Letter dwell progress
+    this.pendingLetterId,
+    this.letterDwellStartTime,
+    this.lastConnectedLetterId,
     // Pure connection celebration
     this.showConnectionAnimation = false,
   });
@@ -42,6 +46,11 @@ class LetterConstellation extends StatefulWidget {
   final List<MysteryOrb> mysteryOrbs;
   final int? pendingMysteryOrbId; // Orb being hovered
   final DateTime? mysteryOrbDwellStartTime; // When dwell started
+
+  // Letter dwell progress
+  final int? pendingLetterId; // Letter being hovered
+  final DateTime? letterDwellStartTime; // When dwell started on letter
+  final int? lastConnectedLetterId; // For connection flash animation
 
   // Pure connection celebration
   final bool showConnectionAnimation; // Trigger path celebration animation
@@ -99,6 +108,16 @@ class _LetterConstellationState extends State<LetterConstellation>
 
     const dwellDuration = Duration(seconds: 1);
     final elapsed = DateTime.now().difference(widget.mysteryOrbDwellStartTime!);
+    return (elapsed.inMilliseconds / dwellDuration.inMilliseconds).clamp(0.0, 1.0);
+  }
+
+  /// Calculate dwell progress for a letter (0.0 to 1.0)
+  double _getLetterDwellProgress(int letterId) {
+    if (widget.pendingLetterId != letterId) return 0.0;
+    if (widget.letterDwellStartTime == null) return 0.0;
+
+    const dwellDuration = Duration(milliseconds: HitDetectionConfig.dwellTimeMs);
+    final elapsed = DateTime.now().difference(widget.letterDwellStartTime!);
     return (elapsed.inMilliseconds / dwellDuration.inMilliseconds).clamp(0.0, 1.0);
   }
 
@@ -223,6 +242,8 @@ class _LetterConstellationState extends State<LetterConstellation>
                         letter.letter.toUpperCase() == widget.startingLetter!.toUpperCase();
                     final isHint = _isHintLetter(letter.id);
                     final isApproaching = widget.approachingLetterIds.contains(letter.id);
+                    final dwellProgress = _getLetterDwellProgress(letter.id);
+                    final justConnected = widget.lastConnectedLetterId == letter.id;
 
                     return Positioned(
                       left: x - (bubbleSize / 2),
@@ -235,6 +256,8 @@ class _LetterConstellationState extends State<LetterConstellation>
                           isStartingLetter: isStarting,
                           isHintLetter: isHint,
                           isApproaching: isApproaching,
+                          dwellProgress: dwellProgress,
+                          justConnected: justConnected,
                           size: bubbleSize,
                         ),
                       ),

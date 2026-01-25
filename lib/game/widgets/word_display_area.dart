@@ -9,13 +9,19 @@ class WordDisplayArea extends StatefulWidget {
   const WordDisplayArea({
     super.key,
     required this.selectedLetters,
+    required this.letters,
     this.committedWord = '',
     this.celebrate = false,
     this.shake = false,
+    this.pendingLetterId,
+    this.letterDwellStartTime,
   });
 
   /// Selected letters (current drag), where null represents a space
   final List<LetterNode?> selectedLetters;
+
+  /// All available letters (to look up pending letter)
+  final List<LetterNode> letters;
 
   /// Already committed word segments (locked in via space)
   final String committedWord;
@@ -25,6 +31,12 @@ class WordDisplayArea extends StatefulWidget {
 
   /// Trigger shake animation (wrong answer)
   final bool shake;
+
+  /// Letter ID currently being dwelled on (for target indicator)
+  final int? pendingLetterId;
+
+  /// When dwell started on the pending letter
+  final DateTime? letterDwellStartTime;
 
   @override
   State<WordDisplayArea> createState() => _WordDisplayAreaState();
@@ -196,12 +208,30 @@ class _WordDisplayAreaState extends State<WordDisplayArea>
     );
   }
 
+  /// Get the target letter being dwelled on (if any)
+  String? get _targetLetter {
+    if (widget.pendingLetterId == null) return null;
+    // Don't show if already selected
+    if (widget.selectedLetters.any((l) => l?.id == widget.pendingLetterId)) return null;
+    // Mystery orbs have IDs 100+
+    if (widget.pendingLetterId! >= 100) return '?';
+
+    final letter = widget.letters.firstWhere(
+      (l) => l.id == widget.pendingLetterId,
+      orElse: () => const LetterNode(id: -1, letter: '', points: 0, position: Offset.zero),
+    );
+    return letter.letter.isNotEmpty ? letter.letter.toUpperCase() : null;
+  }
+
   /// Build the active selection area (landing zone for letters)
   Widget _buildActiveSelectionArea(
     BuildContext context,
     bool hasContent,
     bool hasActiveSelection,
   ) {
+    final targetLetter = _targetLetter;
+    final showTargetIndicator = targetLetter != null;
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final bubbleSize = _calculateBubbleSize(
@@ -221,9 +251,10 @@ class _WordDisplayAreaState extends State<WordDisplayArea>
             margin: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
             padding: const EdgeInsets.symmetric(
               horizontal: AppSpacing.lg,
-              vertical: AppSpacing.md,
+              vertical: AppSpacing.sm,
             ),
-            constraints: const BoxConstraints(minHeight: 70),
+            // Fixed height to accommodate 2 rows without jarring resize
+            height: 120,
             decoration: BoxDecoration(
               color: AppColors.primaryDarkPurple.withAlpha(153),
               borderRadius: BorderRadius.circular(AppBorderRadius.lg),
@@ -234,30 +265,79 @@ class _WordDisplayAreaState extends State<WordDisplayArea>
                 width: 2,
               ),
             ),
-            child: !hasActiveSelection
-                ? Center(
-                    child: Text(
-                      hasContent ? 'Continue spelling...' : 'Connect letters...',
-                      style: TextStyle(
-                        color: AppColors.white.withAlpha(128),
-                        fontSize: 16,
-                      ),
-                    ),
-                  )
-                : Wrap(
-                    alignment: WrapAlignment.center,
-                    runAlignment: WrapAlignment.center,
-                    spacing: 0,
-                    runSpacing: AppSpacing.xs,
-                    children: widget.selectedLetters.asMap().entries.map((entry) {
-                      final index = entry.key;
-                      final letter = entry.value;
-                      return _buildAnimatedLetter(letter, bubbleSize, index);
-                    }).toList(),
-                  ),
+            child: _buildSelectionContent(
+              hasContent: hasContent,
+              hasActiveSelection: hasActiveSelection,
+              showTargetIndicator: showTargetIndicator,
+              targetLetter: targetLetter,
+              bubbleSize: bubbleSize,
+            ),
           ),
         );
       },
+    );
+  }
+
+  /// Build the content inside the selection area
+  Widget _buildSelectionContent({
+    required bool hasContent,
+    required bool hasActiveSelection,
+    required bool showTargetIndicator,
+    required String? targetLetter,
+    required double bubbleSize,
+  }) {
+    // No selection yet - show placeholder or target indicator
+    if (!hasActiveSelection) {
+      if (showTargetIndicator && targetLetter != null) {
+        // Show target indicator centered when no selection yet
+        return Center(
+          child: _TargetLetterIndicator(
+            letter: targetLetter,
+            dwellStartTime: widget.letterDwellStartTime,
+            size: 44.0,
+          ),
+        );
+      }
+      return Center(
+        child: Text(
+          hasContent ? 'Continue spelling...' : 'Connect letters...',
+          style: TextStyle(
+            color: AppColors.white.withAlpha(128),
+            fontSize: 16,
+          ),
+        ),
+      );
+    }
+
+    // Build letter widgets
+    final letterWidgets = widget.selectedLetters.asMap().entries.map((entry) {
+      final index = entry.key;
+      final letter = entry.value;
+      return _buildAnimatedLetter(letter, bubbleSize, index);
+    }).toList();
+
+    // Add target indicator as last item in flow (if showing)
+    if (showTargetIndicator && targetLetter != null) {
+      letterWidgets.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+          child: _TargetLetterIndicator(
+            letter: targetLetter,
+            dwellStartTime: widget.letterDwellStartTime,
+            size: bubbleSize.clamp(36.0, 44.0),
+          ),
+        ),
+      );
+    }
+
+    return Center(
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        runAlignment: WrapAlignment.center,
+        spacing: 0,
+        runSpacing: AppSpacing.xs,
+        children: letterWidgets,
+      ),
     );
   }
 
@@ -351,4 +431,186 @@ class _TriangleConstellationPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// Target letter indicator with circular progress ring
+class _TargetLetterIndicator extends StatefulWidget {
+  const _TargetLetterIndicator({
+    required this.letter,
+    required this.size,
+    this.dwellStartTime,
+  });
+
+  final String letter;
+  final double size;
+  final DateTime? dwellStartTime;
+
+  @override
+  State<_TargetLetterIndicator> createState() => _TargetLetterIndicatorState();
+}
+
+class _TargetLetterIndicatorState extends State<_TargetLetterIndicator>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _progress;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: HitDetectionConfig.dwellTimeMs),
+    );
+    _progress = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.linear),
+    );
+
+    _startFromCurrentProgress();
+  }
+
+  void _startFromCurrentProgress() {
+    if (widget.dwellStartTime != null) {
+      final elapsed = DateTime.now().difference(widget.dwellStartTime!);
+      final startProgress = (elapsed.inMilliseconds / HitDetectionConfig.dwellTimeMs).clamp(0.0, 1.0);
+      _controller.forward(from: startProgress);
+    } else {
+      _controller.forward(from: 0.0);
+    }
+  }
+
+  @override
+  void didUpdateWidget(_TargetLetterIndicator oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.letter != oldWidget.letter || widget.dwellStartTime != oldWidget.dwellStartTime) {
+      _startFromCurrentProgress();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _progress,
+      builder: (context, child) {
+        final progress = _progress.value;
+        // Opacity increases from 0.5 to 1.0
+        final opacity = 0.5 + (progress * 0.5);
+        // Glow intensity increases with progress
+        final glowAlpha = (progress * 200).toInt();
+
+        return Opacity(
+          opacity: opacity,
+          child: SizedBox(
+            width: widget.size + 12,
+            height: widget.size + 12,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // Circular progress ring
+                CustomPaint(
+                  size: Size(widget.size + 12, widget.size + 12),
+                  painter: _DwellProgressPainter(
+                    progress: progress,
+                    color: AppColors.accentCyan,
+                    strokeWidth: 3.0,
+                  ),
+                ),
+                // Letter bubble with glow
+                Container(
+                  width: widget.size,
+                  height: widget.size,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.primaryDarkPurple,
+                    border: Border.all(
+                      color: AppColors.accentCyan,
+                      width: 2,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.accentCyan.withAlpha(glowAlpha),
+                        blurRadius: 12 + (progress * 8),
+                        spreadRadius: 2 + (progress * 3),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Text(
+                      widget.letter,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: widget.size * 0.45,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Custom painter for circular dwell progress indicator
+class _DwellProgressPainter extends CustomPainter {
+  _DwellProgressPainter({
+    required this.progress,
+    required this.color,
+    required this.strokeWidth,
+  });
+
+  final double progress;
+  final Color color;
+  final double strokeWidth;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (progress <= 0) return;
+
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.width / 2) - (strokeWidth / 2);
+
+    // Background track (subtle)
+    final trackPaint = Paint()
+      ..color = color.withAlpha(40)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawCircle(center, radius, trackPaint);
+
+    // Progress arc
+    final progressPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+
+    // Start from top (-90 degrees) and sweep clockwise
+    const startAngle = -math.pi / 2;
+    final sweepAngle = 2 * math.pi * progress;
+
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      startAngle,
+      sweepAngle,
+      false,
+      progressPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_DwellProgressPainter oldDelegate) {
+    return oldDelegate.progress != progress ||
+        oldDelegate.color != color ||
+        oldDelegate.strokeWidth != strokeWidth;
+  }
 }

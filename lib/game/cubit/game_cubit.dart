@@ -853,11 +853,15 @@ class GameCubit extends Cubit<GameState> {
               approachingLetterIds: [],
               pendingMysteryOrbId: hit.id,
               mysteryOrbDwellStartTime: state.mysteryOrbDwellStartTime ?? now,
+              clearPendingLetterId: true,
+              clearLetterDwellStartTime: true,
             ));
           } else {
             emit(state.copyWith(
               currentDragPosition: relativePosition,
               approachingLetterIds: [hit.id],
+              pendingLetterId: hit.id,
+              letterDwellStartTime: state.letterDwellStartTime ?? now,
               clearPendingMysteryOrb: true,
               clearMysteryOrbDwellStartTime: true,
             ));
@@ -873,11 +877,15 @@ class GameCubit extends Cubit<GameState> {
             approachingLetterIds: [],
             pendingMysteryOrbId: hit.id,
             mysteryOrbDwellStartTime: now,
+            clearPendingLetterId: true,
+            clearLetterDwellStartTime: true,
           ));
         } else {
           emit(state.copyWith(
             currentDragPosition: relativePosition,
             approachingLetterIds: [hit.id],
+            pendingLetterId: hit.id,
+            letterDwellStartTime: now,
             clearPendingMysteryOrb: true,
             clearMysteryOrbDwellStartTime: true,
           ));
@@ -894,6 +902,8 @@ class GameCubit extends Cubit<GameState> {
       approachingLetterIds: [],
       clearPendingMysteryOrb: true,
       clearMysteryOrbDwellStartTime: true,
+      clearPendingLetterId: true,
+      clearLetterDwellStartTime: true,
     ));
   }
 
@@ -911,9 +921,9 @@ class GameCubit extends Cubit<GameState> {
       return; // Skip - this letter is already the last selected
     }
 
-    // Add the item with subtle feedback (no hint about validity)
+    // Add the item with clear feedback when connected
     AudioService.instance.play(GameSound.letterSelect);
-    HapticService.instance.light(); // Subtle feedback, not suggestive of correctness
+    HapticService.instance.medium(); // Medium haptic for letter connection
 
     final newSelection = [...state.selectedLetterIds, id];
 
@@ -947,7 +957,10 @@ class GameCubit extends Cubit<GameState> {
             mysteryOrbs: updatedOrbs,
             clearPendingMysteryOrb: true,
             clearMysteryOrbDwellStartTime: true,
+            clearPendingLetterId: true,
+            clearLetterDwellStartTime: true,
             lastMysteryOutcome: outcome,
+            lastConnectedLetterId: id, // For connection flash animation
             // Only set pure connection if dragging through letters (not tapping)
             isPureConnection: fromDrag ? true : false,
           ));
@@ -964,6 +977,9 @@ class GameCubit extends Cubit<GameState> {
       currentDragPosition: position,
       approachingLetterIds: [],
       clearPendingMysteryOrb: true,
+      clearPendingLetterId: true,
+      clearLetterDwellStartTime: true,
+      lastConnectedLetterId: id, // For connection flash animation
       // Only set pure connection if dragging through letters (not tapping)
       isPureConnection: fromDrag ? true : false,
       clearMysteryOrbDwellStartTime: true,
@@ -1095,6 +1111,8 @@ class GameCubit extends Cubit<GameState> {
   }
 
   void clearSelection() {
+    _pendingLetterId = null;
+    _pendingLetterEnteredAt = null;
     emit(state.copyWith(
       selectedLetterIds: [],
       committedWord: '', // Also clear committed word
@@ -1103,6 +1121,8 @@ class GameCubit extends Cubit<GameState> {
       repeatUsageCount: 0,
       isPureConnection: false, // Reset pure connection tracking
       showConnectionAnimation: false,
+      clearPendingLetterId: true,
+      clearLetterDwellStartTime: true,
     ));
   }
 

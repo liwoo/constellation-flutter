@@ -162,7 +162,7 @@ class HitDetectionConfig {
   static const double outerHitRadius = 0.08;
 
   /// Time required to dwell on a letter for selection (milliseconds)
-  static const int dwellTimeMs = 1500;
+  static const int dwellTimeMs = 1000;
 
   /// Velocity threshold for pass-through detection (relative units/second)
   /// Lower = must slow down more to trigger selection
