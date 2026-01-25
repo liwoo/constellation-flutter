@@ -12,6 +12,7 @@ import 'package:constellation_app/shared/widgets/widgets.dart';
 import 'package:constellation_app/shared/constants/constants.dart';
 import 'package:constellation_app/shared/theme/theme.dart';
 import 'package:constellation_app/shared/services/services.dart';
+import 'package:constellation_app/shared/services/shake_detection_service.dart';
 
 /// {@template game_body}
 /// Body of the GamePage - Alpha Quest game mode.
@@ -84,11 +85,48 @@ class _GameBodyState extends State<GameBody>
       TweenSequenceItem(tween: Tween(begin: 1.2, end: 1.0), weight: 15),
       TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.0), weight: 65),
     ]).animate(_mysteryAnimController);
+
+    // Set up shake detection for cheat code
+    ShakeDetectionService.instance.onCheatDetected = _onShakeCheatDetected;
+    ShakeDetectionService.instance.startListening();
+  }
+
+  void _onShakeCheatDetected() {
+    if (!mounted) return;
+    final cubit = context.read<GameCubit>();
+    final success = cubit.skipCategoryCheat();
+    if (success) {
+      // Show visual feedback for cheat activation
+      _showCheatActivated();
+    }
+  }
+
+  void _showCheatActivated() {
+    // Use the mystery outcome animation to show "SKIP!" feedback
+    setState(() {
+      _displayedMysteryOutcome = null; // Clear any existing
+    });
+    // Show a snackbar for feedback
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Category skipped! +15s',
+          style: GoogleFonts.exo2(fontWeight: FontWeight.bold),
+          textAlign: TextAlign.center,
+        ),
+        backgroundColor: AppColors.accentGold,
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.only(bottom: 100, left: 50, right: 50),
+      ),
+    );
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    ShakeDetectionService.instance.stopListening();
+    ShakeDetectionService.instance.onCheatDetected = null;
     _bonusAnimController.dispose();
     _mysteryAnimController.dispose();
     super.dispose();

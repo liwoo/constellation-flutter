@@ -211,8 +211,6 @@ class _WordDisplayAreaState extends State<WordDisplayArea>
   /// Get the target letter being dwelled on (if any)
   String? get _targetLetter {
     if (widget.pendingLetterId == null) return null;
-    // Don't show if already selected
-    if (widget.selectedLetters.any((l) => l?.id == widget.pendingLetterId)) return null;
     // Mystery orbs have IDs 100+
     if (widget.pendingLetterId! >= 100) return '?';
 

@@ -126,6 +126,8 @@ class GameCubit extends Cubit<GameState> {
       clearLastMysteryOutcome: true,
       clearPendingMysteryOrb: true,
       clearMysteryOrbDwellStartTime: true,
+      // Reset cheat code
+      skipCheatUsedThisRound: false,
     ));
   }
 
@@ -1155,6 +1157,59 @@ class GameCubit extends Cubit<GameState> {
     ));
   }
 
+  /// Skip category cheat - activated by shake pattern (right, right, left)
+  /// Skips current category and adds 15 seconds. Can only be used once per letter round.
+  /// Returns true if cheat was activated, false if already used or not in playing phase
+  bool skipCategoryCheat() {
+    // Only works during active gameplay
+    if (state.phase != GamePhase.playingRound) return false;
+    // Can only use once per letter round
+    if (state.skipCheatUsedThisRound) return false;
+    // Need a current letter/category to skip
+    if (state.currentLetter == null) return false;
+
+    // Play feedback
+    AudioService.instance.play(GameSound.wordCorrect);
+    HapticService.instance.success();
+
+    final nextCategoryIndex = state.categoryIndex + 1;
+    final timeBonus = 15;
+    final newTime = (state.timeRemaining + timeBonus).clamp(0, 999);
+
+    // Check if we completed all 5 categories for this letter
+    if (nextCategoryIndex >= GameState.categoriesPerLetter) {
+      // Letter complete! Move to celebration
+      emit(state.copyWith(
+        skipCheatUsedThisRound: true,
+        timeRemaining: newTime,
+      ));
+      _completeLetterRound(state.score, state.completedWords);
+    } else {
+      // Move to next category
+      final nextCategory = state.currentCategories[nextCategoryIndex];
+      emit(state.copyWith(
+        skipCheatUsedThisRound: true,
+        timeRemaining: newTime,
+        categoryIndex: nextCategoryIndex,
+        category: nextCategory,
+        selectedLetterIds: [],
+        committedWord: '',
+        clearLastAnswerCorrect: true,
+        clearLastTimeBonus: true,
+        phase: GamePhase.categoryReveal,
+        spaceUsageCount: 0,
+        repeatUsageCount: 0,
+        showConnectionAnimation: false,
+        isDragging: false,
+        clearDragPosition: true,
+        approachingLetterIds: [],
+        clearHintWord: true,
+      ));
+    }
+
+    return true;
+  }
+
   // Hint configuration from constants
   static const int _minTimeForHint = TimeConfig.minTimeForHint;
   static const int _hintTimeCost = TimeConfig.hintTimeCost;
@@ -1552,6 +1607,7 @@ class GameCubit extends Cubit<GameState> {
       currentCategories: [],
       categoryIndex: 0,
       isPlaying: false, // Timer paused until wheel lands
+      skipCheatUsedThisRound: false, // Reset cheat for new letter round
     ));
     // Note: Timer will start in onWheelLanded()
   }
@@ -1652,6 +1708,8 @@ class GameCubit extends Cubit<GameState> {
       clearLastMysteryOutcome: true,
       clearPendingMysteryOrb: true,
       clearMysteryOrbDwellStartTime: true,
+      // Reset cheat code
+      skipCheatUsedThisRound: false,
     ));
   }
 

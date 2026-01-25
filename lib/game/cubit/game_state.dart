@@ -134,6 +134,8 @@ class GameState extends Equatable {
     this.pendingLetterId, // Letter currently being dwelled on
     this.letterDwellStartTime, // When dwell started on letter
     this.lastConnectedLetterId, // For "just connected" flash animation
+    // Cheat code tracking
+    this.skipCheatUsedThisRound = false, // Skip category cheat (once per letter round)
   });
 
   /// Special ID for space character in selectedLetterIds
@@ -198,6 +200,9 @@ class GameState extends Equatable {
   final int? pendingLetterId; // Letter currently being dwelled on
   final DateTime? letterDwellStartTime; // When dwell started on letter
   final int? lastConnectedLetterId; // For "just connected" flash animation
+
+  // Cheat code tracking
+  final bool skipCheatUsedThisRound; // Skip category cheat used this letter round
 
   /// Points earned in current letter round
   int get pointsEarnedInRound => score - letterRoundStartScore;
@@ -295,6 +300,7 @@ class GameState extends Equatable {
         pendingLetterId,
         letterDwellStartTime,
         lastConnectedLetterId,
+        skipCheatUsedThisRound,
       ];
 
   GameState copyWith({
@@ -348,6 +354,7 @@ class GameState extends Equatable {
     bool clearLetterDwellStartTime = false,
     int? lastConnectedLetterId,
     bool clearLastConnectedLetterId = false,
+    bool? skipCheatUsedThisRound,
   }) {
     return GameState(
       letters: letters ?? this.letters,
@@ -389,6 +396,7 @@ class GameState extends Equatable {
       pendingLetterId: clearPendingLetterId ? null : (pendingLetterId ?? this.pendingLetterId),
       letterDwellStartTime: clearLetterDwellStartTime ? null : (letterDwellStartTime ?? this.letterDwellStartTime),
       lastConnectedLetterId: clearLastConnectedLetterId ? null : (lastConnectedLetterId ?? this.lastConnectedLetterId),
+      skipCheatUsedThisRound: skipCheatUsedThisRound ?? this.skipCheatUsedThisRound,
     );
   }
 }
