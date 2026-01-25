@@ -30,7 +30,7 @@ class GameCubit extends Cubit<GameState> {
   DateTime? _lastDragTime;
 
   // Hit detection config from constants
-  static const Duration _dwellTime = Duration(seconds: HitDetectionConfig.dwellTimeSeconds);
+  static const Duration _dwellTime = Duration(milliseconds: HitDetectionConfig.dwellTimeMs);
   static const double _passThroughVelocity = HitDetectionConfig.passThroughVelocity;
 
   // Mystery orb count based on round (from constants)
@@ -713,25 +713,12 @@ class GameCubit extends Cubit<GameState> {
           ));
           _confirmSelection(hit.id, hit.letter, hit.isOrb, relativePosition);
         } else {
-          // Hit the same letter - TAP TO REPEAT (like x2 but no bonus)
-          // This breaks pure connection since it's a tap
-          if (!hit.isOrb) {
-            // Add the same letter again (allows "SS" by tapping S twice)
-            final newSelection = [...state.selectedLetterIds, hit.id];
-            emit(state.copyWith(
-              isDragging: true,
-              currentDragPosition: relativePosition,
-              selectedLetterIds: newSelection,
-              isPureConnection: false, // Tapping breaks pure connection
-            ));
-            HapticService.instance.light();
-          } else {
-            // Can't repeat mystery orbs - just continue
-            emit(state.copyWith(
-              isDragging: true,
-              currentDragPosition: relativePosition,
-            ));
-          }
+          // Hit the same letter - just continue dragging, don't repeat
+          // Double letters are only allowed via the x2 repeat button
+          emit(state.copyWith(
+            isDragging: true,
+            currentDragPosition: relativePosition,
+          ));
         }
       } else {
         // No hit - just start dragging, keep existing selection
@@ -743,35 +730,8 @@ class GameCubit extends Cubit<GameState> {
     } else {
       // No existing selection - start fresh
       if (hit != null) {
-        // Validate first letter in Alpha Quest mode - but skip for mystery orbs
-        // Mystery orbs are wildcards and can start anywhere
-        if (!hit.isOrb && state.phase == GamePhase.playingRound && state.currentLetter != null) {
-          final potentialWord = state.committedWord + hit.letter;
-          final isValidPath = _dictionary.isValidPrefix(
-            potentialWord,
-            state.category,
-            state.currentLetter!,
-          );
-
-          if (!isValidPath) {
-            // Penalize invalid selection with time deduction
-            final newTime = (state.timeRemaining - TimeConfig.invalidSelectionPenalty).clamp(0, 999);
-            HapticService.instance.error();
-            emit(state.copyWith(
-              isDragging: true,
-              currentDragPosition: relativePosition,
-              timeRemaining: newTime,
-            ));
-            if (newTime <= 0) {
-              _endGame(isWinner: false);
-            }
-            return;
-          }
-        }
-
-        // Valid starting letter/orb - add to selection and trigger orb effect if needed
-        // Don't set isPureConnection yet - it's only true if user DRAGS through letters
-        // If they just tap letters, it stays false
+        // No path validation during selection - players find out at GO time
+        // This removes hints about whether they're on the right track
         emit(state.copyWith(
           isDragging: true,
           currentDragPosition: relativePosition,
@@ -857,97 +817,67 @@ class GameCubit extends Cubit<GameState> {
     return speed;
   }
 
-  /// Update drag position and check for new letter/orb hits with sticky/magnetic behavior
-  /// Mystery orbs are now selectable as part of the word (they act as wildcards)
+  /// Update drag position and check for new letter/orb hits
+  /// ALL selections during drag require dwell time - no immediate selection
+  /// This prevents accidental connections when dragging quickly
   void updateDrag(Offset relativePosition) {
     if (!state.isDragging) return;
 
     final now = DateTime.now();
 
-    // Calculate velocity to detect pass-through vs intentional selection
-    final velocity = _calculateVelocity(relativePosition);
-    final isPassingThrough = velocity > _passThroughVelocity;
-
-    // Update tracking for next velocity calculation
+    // Update tracking for next frame
     _lastDragPosition = relativePosition;
     _lastDragTime = now;
 
-    // Check for letters AND mystery orbs (both are selectable now)
-    final innerHit = _findSelectableAtPosition(relativePosition, _innerHitRadius);
-    final outerHit = _findSelectableAtPosition(relativePosition, _outerHitRadius);
+    // Check if we're over any letter or mystery orb (use outer radius for detection)
+    final hit = _findSelectableAtPosition(relativePosition, _outerHitRadius);
 
     final lastSelectedId = state.selectedLetterIds.isNotEmpty
         ? state.selectedLetterIds.last
         : null;
 
-    // Case 1: Direct hit on inner radius - but still check velocity
-    // Only immediate selection if moving slowly (not passing through)
-    if (innerHit != null && innerHit.id != lastSelectedId) {
-      if (!isPassingThrough) {
-        _confirmSelection(innerHit.id, innerHit.letter, innerHit.isOrb, relativePosition, fromDrag: true);
-        return;
-      }
-      // If passing through inner radius, treat same as outer - need to dwell
-    }
-
-    // Case 2: Within outer radius - only track dwell if NOT passing through quickly
-    if (outerHit != null && outerHit.id != lastSelectedId) {
-      if (isPassingThrough) {
-        // Moving too fast - user is passing through, don't select
-        // Reset pending if it was this item
-        if (_pendingLetterId == outerHit.id) {
-          _pendingLetterId = null;
-          _pendingLetterEnteredAt = null;
-        }
-        emit(state.copyWith(
-          currentDragPosition: relativePosition,
-          approachingLetterIds: [], // Clear approaching when passing through
-          clearPendingMysteryOrb: true,
-          clearMysteryOrbDwellStartTime: true,
-        ));
-        return;
-      }
-
-      // Moving slowly enough - check dwell time
-      if (_pendingLetterId == outerHit.id) {
-        // Same item as pending - check if dwell time elapsed
+    // If we're over a selectable item that's not already the last selected
+    if (hit != null && hit.id != lastSelectedId) {
+      // Check if this is the same item we were tracking
+      if (_pendingLetterId == hit.id) {
+        // Same item - check if dwell time has elapsed
         final elapsed = now.difference(_pendingLetterEnteredAt!);
         if (elapsed >= _dwellTime) {
-          _confirmSelection(outerHit.id, outerHit.letter, outerHit.isOrb, relativePosition, fromDrag: true);
+          // Dwell time met - confirm selection
+          _confirmSelection(hit.id, hit.letter, hit.isOrb, relativePosition, fromDrag: true);
         } else {
-          // Still waiting - show approaching state
-          // For orbs, also track orb dwell separately for visual feedback
-          if (outerHit.isOrb) {
+          // Still dwelling - show approaching state for visual feedback
+          if (hit.isOrb) {
             emit(state.copyWith(
               currentDragPosition: relativePosition,
-              approachingLetterIds: [], // Don't highlight orbs in letter list
-              pendingMysteryOrbId: outerHit.id,
+              approachingLetterIds: [],
+              pendingMysteryOrbId: hit.id,
               mysteryOrbDwellStartTime: state.mysteryOrbDwellStartTime ?? now,
             ));
           } else {
             emit(state.copyWith(
               currentDragPosition: relativePosition,
-              approachingLetterIds: [outerHit.id],
+              approachingLetterIds: [hit.id],
               clearPendingMysteryOrb: true,
               clearMysteryOrbDwellStartTime: true,
             ));
           }
         }
       } else {
-        // New item entered outer zone - start tracking
-        _pendingLetterId = outerHit.id;
+        // New item - start tracking dwell time from scratch
+        _pendingLetterId = hit.id;
         _pendingLetterEnteredAt = now;
-        if (outerHit.isOrb) {
+        if (hit.isOrb) {
           emit(state.copyWith(
             currentDragPosition: relativePosition,
             approachingLetterIds: [],
-            pendingMysteryOrbId: outerHit.id,
+            pendingMysteryOrbId: hit.id,
             mysteryOrbDwellStartTime: now,
           ));
         } else {
           emit(state.copyWith(
             currentDragPosition: relativePosition,
-            approachingLetterIds: [outerHit.id],
+            approachingLetterIds: [hit.id],
             clearPendingMysteryOrb: true,
             clearMysteryOrbDwellStartTime: true,
           ));
@@ -956,60 +886,34 @@ class GameCubit extends Cubit<GameState> {
       return;
     }
 
-    // Case 3: Outside all zones - clear pending and update position
+    // Outside all hit zones - reset pending state
     _pendingLetterId = null;
     _pendingLetterEnteredAt = null;
     emit(state.copyWith(
       currentDragPosition: relativePosition,
-      approachingLetterIds: [], // Clear approaching when outside
+      approachingLetterIds: [],
       clearPendingMysteryOrb: true,
       clearMysteryOrbDwellStartTime: true,
     ));
   }
 
   /// Confirm selection of a letter OR mystery orb
-  /// Mystery orbs are TRUE WILDCARDS - always connectable, validation at submit time
+  /// No path validation during selection - players find out at GO time
   /// [fromDrag] indicates if this came from dragging (true) or tapping (false)
   /// Only dragging maintains pure connection status
   void _confirmSelection(int id, String letter, bool isOrb, Offset position, {bool fromDrag = false}) {
     _pendingLetterId = null;
     _pendingLetterEnteredAt = null;
 
-    // Skip ALL prefix validation if:
-    // 1. This is a mystery orb, OR
-    // 2. Selection already contains a wildcard (can't validate patterns mid-word)
-    final hasWildcard = state.currentSelection.contains(GameState.wildcardChar);
-    final shouldSkipValidation = isOrb || hasWildcard;
-
-    if (!shouldSkipValidation && state.phase == GamePhase.playingRound && state.currentLetter != null) {
-      final potentialWord = state.committedWord + state.currentSelection + letter;
-
-      final isValidPath = _dictionary.isValidPrefix(
-        potentialWord,
-        state.category,
-        state.currentLetter!,
-      );
-
-      if (!isValidPath) {
-        // Penalize invalid selection with time deduction
-        final newTime = (state.timeRemaining - TimeConfig.invalidSelectionPenalty).clamp(0, 999);
-        HapticService.instance.error();
-        emit(state.copyWith(
-          currentDragPosition: position,
-          clearPendingMysteryOrb: true,
-          clearMysteryOrbDwellStartTime: true,
-          timeRemaining: newTime,
-        ));
-        if (newTime <= 0) {
-          _endGame(isWinner: false);
-        }
-        return;
-      }
+    // During drag, prevent selecting the same letter consecutively (no double letters)
+    // Double letters are only allowed via tap or x2 button, not during drag
+    if (fromDrag && state.selectedLetterIds.isNotEmpty && state.selectedLetterIds.last == id) {
+      return; // Skip - this letter is already the last selected
     }
 
-    // Valid connection - add the item
+    // Add the item with subtle feedback (no hint about validity)
     AudioService.instance.play(GameSound.letterSelect);
-    HapticService.instance.medium();
+    HapticService.instance.light(); // Subtle feedback, not suggestive of correctness
 
     final newSelection = [...state.selectedLetterIds, id];
 
@@ -1176,8 +1080,12 @@ class GameCubit extends Cubit<GameState> {
   }
 
   void selectLetter(int letterId) {
-    // Add letter to selection - allows consecutive duplicates (like tapping S twice for SS)
-    // This works like the x2 button but without the bonus points
+    // Don't allow consecutive duplicates via tap - use x2 button instead
+    if (state.selectedLetterIds.isNotEmpty && state.selectedLetterIds.last == letterId) {
+      return; // Skip - double letters only allowed via x2 repeat button
+    }
+
+    // Add letter to selection
     // Tapping letters breaks pure connection (only dragging maintains it)
     final newSelection = [...state.selectedLetterIds, letterId];
     emit(state.copyWith(

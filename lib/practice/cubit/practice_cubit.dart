@@ -6,6 +6,7 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:constellation_app/game/cubit/game_cubit.dart';
+import 'package:constellation_app/shared/constants/game_constants.dart';
 import 'package:constellation_app/shared/services/services.dart';
 
 part 'practice_state.dart';
@@ -13,7 +14,6 @@ part 'practice_state.dart';
 class PracticeCubit extends Cubit<PracticeState> {
   PracticeCubit() : super(const PracticeInitial()) {
     _loadWords();
-    _initializeLetters();
   }
 
   final _random = Random();
@@ -22,14 +22,10 @@ class PracticeCubit extends Cubit<PracticeState> {
   // Sticky/magnetic selection tracking (same as GameCubit)
   int? _pendingLetterId;
   DateTime? _pendingLetterEnteredAt;
-  Offset? _lastDragPosition;
-  DateTime? _lastDragTime;
 
-  // Tuning constants
-  static const Duration _dwellTime = Duration(seconds: 2);
-  static const double _passThroughVelocity = 0.15;
-  static const double _innerHitRadius = 0.035;
-  static const double _outerHitRadius = 0.055;
+  // Tuning constants - use shared config
+  static const Duration _dwellTime = Duration(milliseconds: HitDetectionConfig.dwellTimeMs);
+  static const double _outerHitRadius = HitDetectionConfig.outerHitRadius;
 
   // Letter point values
   static const Map<String, int> _letterPoints = {
@@ -62,15 +58,8 @@ class PracticeCubit extends Cubit<PracticeState> {
     }
   }
 
-  void _initializeLetters() {
-    final letters = _generateLetterNodes();
-    emit(state.copyWith(letters: letters));
-  }
-
   /// Start a new practice session
   void startSession() {
-    _initializeLetters();
-
     // Select 10 random words, progressively harder
     final sessionWords = _selectSessionWords();
 
@@ -87,6 +76,11 @@ class PracticeCubit extends Cubit<PracticeState> {
       }
     }
 
+    // Generate letters for the first word
+    final letters = sessionWords.isNotEmpty
+        ? _generateLettersForWord(sessionWords[0].word)
+        : <LetterNode>[];
+
     emit(state.copyWith(
       phase: PracticePhase.playing,
       sessionWords: sessionWords,
@@ -97,6 +91,7 @@ class PracticeCubit extends Cubit<PracticeState> {
       showSuccess: false,
       showTutorial: tutorial,
       clearTutorial: tutorial == null,
+      letters: letters,
     ));
   }
 
@@ -156,191 +151,173 @@ class PracticeCubit extends Cubit<PracticeState> {
     return selected;
   }
 
-  /// Generate letter nodes in QWERTY keyboard layout
-  /// Compact layout anchored to bottom, like a real keyboard
-  List<LetterNode> _generateLetterNodes() {
+  /// Generate letter nodes for a specific target word
+  /// Shows only letters needed for the word plus some random extras (5-15 total)
+  /// Positions are randomized in a grid layout like Alpha Quest mode
+  List<LetterNode> _generateLettersForWord(String targetWord) {
+    // Extract unique letters needed for the target word
+    final neededLetters = <String>{};
+    for (final char in targetWord.toUpperCase().split('')) {
+      if (char.codeUnitAt(0) >= 65 && char.codeUnitAt(0) <= 90) {
+        neededLetters.add(char);
+      }
+    }
+
+    // Determine target count: word letters + 2-8 random extras (5-15 total)
+    final wordLetterCount = neededLetters.length;
+    final minExtra = max(0, 5 - wordLetterCount);
+    final maxExtra = max(minExtra, 15 - wordLetterCount);
+    final extraCount = minExtra + _random.nextInt(maxExtra - minExtra + 1);
+
+    // Get random extra letters (not in the word)
+    final allLetters = List.generate(26, (i) => String.fromCharCode('A'.codeUnitAt(0) + i));
+    final availableExtras = allLetters.where((l) => !neededLetters.contains(l)).toList();
+    availableExtras.shuffle(_random);
+    final extraLetters = availableExtras.take(extraCount).toSet();
+
+    // Combine and sort for consistent IDs
+    final allNeededLetters = [...neededLetters, ...extraLetters].toList();
+    allNeededLetters.sort();
+
+    // Generate randomized grid positions
+    final positions = _generateRandomizedPositions(allNeededLetters.length);
+
+    // Shuffle position assignment for randomness
+    final shuffledPositions = List<Offset>.from(positions);
+    shuffledPositions.shuffle(_random);
+
+    // Create letter nodes
     final letters = <LetterNode>[];
-
-    // QWERTY keyboard rows
-    const row1 = ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P']; // 10 letters
-    const row2 = ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'];      // 9 letters
-    const row3 = ['Z', 'X', 'C', 'V', 'B', 'N', 'M'];                // 7 letters
-
-    // Layout configuration - bottom-anchored with comfortable spacing
-    const paddingX = 0.05;
-    const bottomPadding = 0.18; // Distance from bottom
-    const availableWidth = 1.0 - (paddingX * 2);
-    const rowSpacing = 0.20; // Comfortable spacing between rows
-
-    // Calculate positions anchored from bottom
-    // Row 3 is at bottom, Row 1 is at top of keyboard area
-    Map<String, Offset> letterPositions = {};
-
-    // Row 3 (bottom row) - 7 letters, more indent
-    const row3Indent = 0.12;
-    final row3Width = availableWidth - (row3Indent * 2);
-    for (int i = 0; i < row3.length; i++) {
-      final x = paddingX + row3Indent + (i + 0.5) * (row3Width / row3.length);
-      final y = 1.0 - bottomPadding; // Anchored to bottom
-      letterPositions[row3[i]] = Offset(x, y);
-    }
-
-    // Row 2 (middle row) - 9 letters, slight indent
-    const row2Indent = 0.04;
-    final row2Width = availableWidth - (row2Indent * 2);
-    for (int i = 0; i < row2.length; i++) {
-      final x = paddingX + row2Indent + (i + 0.5) * (row2Width / row2.length);
-      final y = 1.0 - bottomPadding - rowSpacing;
-      letterPositions[row2[i]] = Offset(x, y);
-    }
-
-    // Row 1 (top row) - 10 letters, no indent
-    for (int i = 0; i < row1.length; i++) {
-      final x = paddingX + (i + 0.5) * (availableWidth / row1.length);
-      final y = 1.0 - bottomPadding - rowSpacing * 2;
-      letterPositions[row1[i]] = Offset(x, y);
-    }
-
-    // Create letter nodes in alphabetical order (for consistent IDs)
-    for (int i = 0; i < 26; i++) {
-      final letter = String.fromCharCode('A'.codeUnitAt(0) + i);
+    for (int i = 0; i < allNeededLetters.length; i++) {
+      final letter = allNeededLetters[i];
       final points = _letterPoints[letter] ?? 1;
-      final position = letterPositions[letter] ?? const Offset(0.5, 0.5);
+      final id = letter.codeUnitAt(0) - 'A'.codeUnitAt(0);
 
       letters.add(LetterNode(
-        id: i,
+        id: id,
         letter: letter,
         points: points,
-        position: position,
+        position: shuffledPositions[i],
       ));
     }
 
     return letters;
   }
 
-  /// Start dragging from a position
-  void startDrag(Offset relativePosition) {
-    _pendingLetterId = null;
-    _pendingLetterEnteredAt = null;
-    _lastDragPosition = relativePosition;
-    _lastDragTime = DateTime.now();
+  /// Generate randomized grid positions for the given number of items
+  List<Offset> _generateRandomizedPositions(int count) {
+    if (count == 0) return [];
 
-    final hasExistingSelection = state.selectedLetterIds.isNotEmpty;
-    final hitNode = _findNodeAtPosition(relativePosition, _innerHitRadius);
+    // Layout bounds (same as Alpha Quest)
+    const paddingX = LayoutConfig.gridPaddingX;
+    const paddingY = LayoutConfig.gridPaddingY;
+    const maxY = LayoutConfig.gridAvailableHeight;
 
-    if (hasExistingSelection) {
-      if (hitNode != null) {
-        final lastId = state.selectedLetterIds.last;
-        if (hitNode.id != lastId) {
-          final newSelection = [...state.selectedLetterIds, hitNode.id];
-          emit(state.copyWith(
-            isDragging: true,
-            selectedLetterIds: newSelection,
-            currentDragPosition: relativePosition,
-          ));
-          _checkWordMatch();
-        } else {
-          emit(state.copyWith(
-            isDragging: true,
-            currentDragPosition: relativePosition,
-          ));
-        }
-      } else {
-        emit(state.copyWith(
-          isDragging: true,
-          currentDragPosition: relativePosition,
-        ));
-      }
-    } else {
-      if (hitNode != null) {
-        emit(state.copyWith(
-          isDragging: true,
-          selectedLetterIds: [hitNode.id],
-          currentDragPosition: relativePosition,
-        ));
-      } else {
-        emit(state.copyWith(
-          isDragging: true,
-          currentDragPosition: relativePosition,
+    // Calculate grid dimensions
+    final cols = count <= 9 ? 3 : (count <= 16 ? 4 : 5);
+    final rows = (count / cols).ceil();
+    final availableWidth = 1.0 - (paddingX * 2);
+    final availableHeight = maxY - paddingY;
+    final cellWidth = availableWidth / cols;
+    final cellHeight = availableHeight / rows;
+    final jitterX = cellWidth * LayoutConfig.positionJitter;
+    final jitterY = cellHeight * LayoutConfig.positionJitter;
+
+    final positions = <Offset>[];
+    for (int row = 0; row < rows; row++) {
+      for (int col = 0; col < cols; col++) {
+        if (positions.length >= count) break;
+        final baseX = paddingX + (col + 0.5) * cellWidth;
+        final baseY = paddingY + (row + 0.5) * cellHeight;
+        final x = baseX + (_random.nextDouble() - 0.5) * 2 * jitterX;
+        final y = baseY + (_random.nextDouble() - 0.5) * 2 * jitterY;
+        positions.add(Offset(
+          x.clamp(paddingX, 1.0 - paddingX),
+          y.clamp(paddingY, maxY),
         ));
       }
     }
+
+    return positions;
   }
 
-  double _calculateVelocity(Offset currentPosition) {
-    if (_lastDragPosition == null || _lastDragTime == null) return 0.0;
+  /// Start dragging from a position
+  /// Does NOT immediately select - all selections require dwell time
+  void startDrag(Offset relativePosition) {
+    _pendingLetterId = null;
+    _pendingLetterEnteredAt = null;
 
-    final now = DateTime.now();
-    final timeDelta = now.difference(_lastDragTime!).inMicroseconds / 1000000.0;
-    if (timeDelta <= 0) return 0.0;
+    final hitNode = _findNodeAtPosition(relativePosition, _outerHitRadius);
 
-    final dx = currentPosition.dx - _lastDragPosition!.dx;
-    final dy = currentPosition.dy - _lastDragPosition!.dy;
-    final distance = (dx * dx + dy * dy);
-    return distance > 0 ? (distance / timeDelta) : 0.0;
+    if (hitNode != null) {
+      final lastSelectedId = state.selectedLetterIds.isNotEmpty
+          ? state.selectedLetterIds.last
+          : null;
+
+      if (hitNode.id != lastSelectedId) {
+        // Start dwell timer for this letter
+        _pendingLetterId = hitNode.id;
+        _pendingLetterEnteredAt = DateTime.now();
+      }
+      // If same letter, just continue dragging (no double letters via tap)
+    }
+
+    emit(state.copyWith(
+      isDragging: true,
+      currentDragPosition: relativePosition,
+    ));
   }
 
   /// Update drag position
+  /// All selections require dwell time - no immediate selection regardless of velocity
   void updateDrag(Offset relativePosition) {
     if (!state.isDragging) return;
 
     final now = DateTime.now();
-    final velocity = _calculateVelocity(relativePosition);
-    final isPassingThrough = velocity > _passThroughVelocity;
-
-    _lastDragPosition = relativePosition;
-    _lastDragTime = now;
-
-    final innerHitNode = _findNodeAtPosition(relativePosition, _innerHitRadius);
-    final outerHitNode = _findNodeAtPosition(relativePosition, _outerHitRadius);
+    final hitNode = _findNodeAtPosition(relativePosition, _outerHitRadius);
 
     final lastSelectedId = state.selectedLetterIds.isNotEmpty
         ? state.selectedLetterIds.last
         : null;
 
-    if (innerHitNode != null && innerHitNode.id != lastSelectedId) {
-      if (!isPassingThrough) {
-        _confirmLetterSelection(innerHitNode.id, relativePosition);
-        return;
-      }
-    }
-
-    if (outerHitNode != null && outerHitNode.id != lastSelectedId) {
-      if (isPassingThrough) {
-        if (_pendingLetterId == outerHitNode.id) {
-          _pendingLetterId = null;
-          _pendingLetterEnteredAt = null;
-        }
-        emit(state.copyWith(currentDragPosition: relativePosition));
-        return;
-      }
-
-      if (_pendingLetterId == outerHitNode.id) {
+    // Check if we're over a letter (and it's not the last selected one)
+    if (hitNode != null && hitNode.id != lastSelectedId) {
+      if (_pendingLetterId == hitNode.id) {
+        // Check if dwell time has elapsed
         final elapsed = now.difference(_pendingLetterEnteredAt!);
         if (elapsed >= _dwellTime) {
-          _confirmLetterSelection(outerHitNode.id, relativePosition);
+          _confirmLetterSelection(hitNode.id, relativePosition, fromDrag: true);
         } else {
+          // Still dwelling - just update position
           emit(state.copyWith(currentDragPosition: relativePosition));
         }
       } else {
-        _pendingLetterId = outerHitNode.id;
+        // New letter - start dwell timer
+        _pendingLetterId = hitNode.id;
         _pendingLetterEnteredAt = now;
         emit(state.copyWith(currentDragPosition: relativePosition));
       }
       return;
     }
 
+    // Outside all hit zones - reset pending state
     _pendingLetterId = null;
     _pendingLetterEnteredAt = null;
     emit(state.copyWith(currentDragPosition: relativePosition));
   }
 
-  void _confirmLetterSelection(int letterId, Offset position) {
+  void _confirmLetterSelection(int letterId, Offset position, {bool fromDrag = false}) {
+    // Prevent consecutive duplicates during drag
+    // Double letters are only allowed via the x2 repeat button
+    if (fromDrag && state.selectedLetterIds.isNotEmpty && state.selectedLetterIds.last == letterId) {
+      return; // Skip - this letter is already the last selected
+    }
+
     _pendingLetterId = null;
     _pendingLetterEnteredAt = null;
 
     AudioService.instance.play(GameSound.letterSelect);
-    HapticService.instance.medium();
+    HapticService.instance.light(); // Light haptic, same as game cubit
 
     final newSelection = [...state.selectedLetterIds, letterId];
     emit(state.copyWith(
@@ -356,8 +333,6 @@ class PracticeCubit extends Cubit<PracticeState> {
   void endDrag() {
     _pendingLetterId = null;
     _pendingLetterEnteredAt = null;
-    _lastDragPosition = null;
-    _lastDragTime = null;
     emit(state.copyWith(
       isDragging: false,
       clearDragPosition: true,
@@ -444,11 +419,11 @@ class PracticeCubit extends Cubit<PracticeState> {
         clearTutorial: true,
       ));
     } else {
-      // Next word
-      _initializeLetters();
+      // Next word - generate letters specific to this word
+      final nextWord = state.sessionWords[newIndex];
+      final letters = _generateLettersForWord(nextWord.word);
 
       // Check if next word needs a tutorial
-      final nextWord = state.sessionWords[newIndex];
       TutorialType? tutorial;
 
       if (nextWord.isMultiWord && !state.hasSeenSpacedWordsTutorial) {
@@ -467,13 +442,13 @@ class PracticeCubit extends Cubit<PracticeState> {
         showSuccess: false,
         showTutorial: tutorial,
         clearTutorial: tutorial == null,
+        letters: letters,
       ));
     }
   }
 
   /// Reset to start screen
   void resetSession() {
-    _initializeLetters();
     emit(const PracticeState());
   }
 
