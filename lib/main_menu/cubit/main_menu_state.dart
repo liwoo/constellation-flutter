@@ -30,6 +30,7 @@ class MainMenuState extends Equatable {
     this.soundEnabled = true,
     this.playerName = 'Player',
     this.topScores = const [],
+    this.stars = 0,
   });
 
   final int highScore;
@@ -38,9 +39,10 @@ class MainMenuState extends Equatable {
   final bool soundEnabled;
   final String playerName;
   final List<HighScoreEntry> topScores;
+  final int stars;
 
   @override
-  List<Object> get props => [highScore, gamesPlayed, totalWins, soundEnabled, playerName, topScores];
+  List<Object> get props => [highScore, gamesPlayed, totalWins, soundEnabled, playerName, topScores, stars];
 
   /// Creates a copy of the current MainMenuState with property changes
   MainMenuState copyWith({
@@ -50,6 +52,7 @@ class MainMenuState extends Equatable {
     bool? soundEnabled,
     String? playerName,
     List<HighScoreEntry>? topScores,
+    int? stars,
   }) {
     return MainMenuState(
       highScore: highScore ?? this.highScore,
@@ -58,6 +61,7 @@ class MainMenuState extends Equatable {
       soundEnabled: soundEnabled ?? this.soundEnabled,
       playerName: playerName ?? this.playerName,
       topScores: topScores ?? this.topScores,
+      stars: stars ?? this.stars,
     );
   }
 }

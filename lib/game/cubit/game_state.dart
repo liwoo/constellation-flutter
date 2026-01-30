@@ -142,6 +142,7 @@ class GameState extends Equatable {
     this.starsEarnedThisGame = 0, // Stars earned in current game session
     this.lastStarThreshold = 0, // Last score threshold crossed for star award
     this.showStarEarnedAnimation = false, // Trigger star earned animation
+    this.starsEarnedThisRound = 0, // Stars earned this letter round (for end-of-round celebration)
   });
 
   /// Special ID for space character in selectedLetterIds
@@ -216,6 +217,7 @@ class GameState extends Equatable {
   final int starsEarnedThisGame; // Stars earned in current game session
   final int lastStarThreshold; // Last score threshold crossed for star award
   final bool showStarEarnedAnimation; // Trigger star earned animation
+  final int starsEarnedThisRound; // Stars earned this letter round (for end-of-round celebration)
 
   /// Points earned in current letter round
   int get pointsEarnedInRound => score - letterRoundStartScore;
@@ -319,6 +321,7 @@ class GameState extends Equatable {
         starsEarnedThisGame,
         lastStarThreshold,
         showStarEarnedAnimation,
+        starsEarnedThisRound,
       ];
 
   GameState copyWith({
@@ -379,6 +382,7 @@ class GameState extends Equatable {
     int? starsEarnedThisGame,
     int? lastStarThreshold,
     bool? showStarEarnedAnimation,
+    int? starsEarnedThisRound,
   }) {
     return GameState(
       letters: letters ?? this.letters,
@@ -426,6 +430,7 @@ class GameState extends Equatable {
       starsEarnedThisGame: starsEarnedThisGame ?? this.starsEarnedThisGame,
       lastStarThreshold: lastStarThreshold ?? this.lastStarThreshold,
       showStarEarnedAnimation: showStarEarnedAnimation ?? this.showStarEarnedAnimation,
+      starsEarnedThisRound: starsEarnedThisRound ?? this.starsEarnedThisRound,
     );
   }
 }

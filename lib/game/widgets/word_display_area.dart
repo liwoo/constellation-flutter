@@ -15,6 +15,7 @@ class WordDisplayArea extends StatefulWidget {
     this.shake = false,
     this.pendingLetterId,
     this.letterDwellStartTime,
+    this.onRemoveLetterAt,
   });
 
   /// Selected letters (current drag), where null represents a space
@@ -37,6 +38,9 @@ class WordDisplayArea extends StatefulWidget {
 
   /// When dwell started on the pending letter
   final DateTime? letterDwellStartTime;
+
+  /// Callback when user swipes up on a letter to remove it
+  final void Function(int index)? onRemoveLetterAt;
 
   @override
   State<WordDisplayArea> createState() => _WordDisplayAreaState();
@@ -340,6 +344,7 @@ class _WordDisplayAreaState extends State<WordDisplayArea>
   }
 
   /// Build an animated letter bubble that dances on celebration
+  /// Supports swipe-up gesture to remove individual letters
   Widget _buildAnimatedLetter(LetterNode? letter, double bubbleSize, int index) {
     return AnimatedBuilder(
       animation: _celebrationController,
@@ -370,16 +375,20 @@ class _WordDisplayAreaState extends State<WordDisplayArea>
           ),
         );
       },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
-        child: letter == null
-            ? _buildSpaceIndicator(bubbleSize)
-            : LetterBubble(
-                letter: letter.letter,
-                points: letter.points,
-                isSelected: true,
-                size: bubbleSize,
-              ),
+      child: _SwipeToRemoveLetter(
+        index: index,
+        onRemove: widget.onRemoveLetterAt,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+          child: letter == null
+              ? _buildSpaceIndicator(bubbleSize)
+              : LetterBubble(
+                  letter: letter.letter,
+                  points: letter.points,
+                  isSelected: true,
+                  size: bubbleSize,
+                ),
+        ),
       ),
     );
   }
@@ -610,5 +619,211 @@ class _DwellProgressPainter extends CustomPainter {
     return oldDelegate.progress != progress ||
         oldDelegate.color != color ||
         oldDelegate.strokeWidth != strokeWidth;
+  }
+}
+
+/// Widget that wraps a letter and handles swipe-up to remove
+/// Animates with shrink, pan in swipe direction, and fade out
+class _SwipeToRemoveLetter extends StatefulWidget {
+  const _SwipeToRemoveLetter({
+    required this.index,
+    required this.child,
+    this.onRemove,
+  });
+
+  final int index;
+  final Widget child;
+  final void Function(int index)? onRemove;
+
+  @override
+  State<_SwipeToRemoveLetter> createState() => _SwipeToRemoveLetterState();
+}
+
+class _SwipeToRemoveLetterState extends State<_SwipeToRemoveLetter>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _removeController;
+
+  // Drag tracking
+  Offset _dragOffset = Offset.zero;
+  Offset _velocity = Offset.zero;
+  bool _isRemoving = false;
+
+  // Animation values for the fly-away effect
+  late Animation<Offset> _flyAwayAnimation;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _opacityAnimation;
+
+  static const double _removeThreshold = -25.0; // Swipe up threshold (negative Y)
+
+  @override
+  void initState() {
+    super.initState();
+    _removeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+
+    _removeController.addStatusListener((status) {
+      if (status == AnimationStatus.completed && _isRemoving) {
+        widget.onRemove?.call(widget.index);
+      }
+    });
+
+    // Initialize with default animations (will be updated on removal)
+    _setupAnimations(Offset.zero);
+  }
+
+  void _setupAnimations(Offset targetOffset) {
+    // Fly away in the direction of the swipe, amplified by velocity
+    _flyAwayAnimation = Tween<Offset>(
+      begin: _dragOffset,
+      end: targetOffset,
+    ).animate(CurvedAnimation(
+      parent: _removeController,
+      curve: Curves.easeOut,
+    ));
+
+    // Shrink from current scale to 0
+    final currentScale = _calculateScale(_dragOffset.dy);
+    _scaleAnimation = Tween<double>(
+      begin: currentScale,
+      end: 0.0,
+    ).animate(CurvedAnimation(
+      parent: _removeController,
+      curve: Curves.easeIn,
+    ));
+
+    // Fade out
+    final currentOpacity = _calculateOpacity(_dragOffset.dy);
+    _opacityAnimation = Tween<double>(
+      begin: currentOpacity,
+      end: 0.0,
+    ).animate(CurvedAnimation(
+      parent: _removeController,
+      curve: Curves.easeOut,
+    ));
+  }
+
+  @override
+  void dispose() {
+    _removeController.dispose();
+    super.dispose();
+  }
+
+  /// Calculate scale based on drag distance (shrinks as you drag up)
+  double _calculateScale(double dragY) {
+    if (dragY >= 0) return 1.0;
+    // Scale from 1.0 to 0.7 as drag goes from 0 to -60
+    final progress = (dragY.abs() / 60.0).clamp(0.0, 1.0);
+    return 1.0 - (progress * 0.3);
+  }
+
+  /// Calculate opacity based on drag distance
+  double _calculateOpacity(double dragY) {
+    if (dragY >= 0) return 1.0;
+    // Opacity from 1.0 to 0.6 as drag goes from 0 to -60
+    final progress = (dragY.abs() / 60.0).clamp(0.0, 1.0);
+    return 1.0 - (progress * 0.4);
+  }
+
+  void _onPanUpdate(DragUpdateDetails details) {
+    if (_isRemoving) return;
+
+    setState(() {
+      // Track both X and Y movement, but bias toward upward
+      _dragOffset += details.delta;
+      // Clamp Y to only allow upward movement
+      _dragOffset = Offset(
+        _dragOffset.dx.clamp(-30.0, 30.0),
+        _dragOffset.dy.clamp(-80.0, 0.0),
+      );
+    });
+  }
+
+  void _onPanEnd(DragEndDetails details) {
+    if (_isRemoving) return;
+
+    _velocity = details.velocity.pixelsPerSecond;
+
+    if (_dragOffset.dy <= _removeThreshold) {
+      // Threshold reached - animate out in the direction of the swipe
+      setState(() {
+        _isRemoving = true;
+      });
+
+      // Calculate fly-away target based on velocity and current offset
+      // Amplify the movement in the swipe direction
+      final velocityFactor = 0.15; // How much velocity affects the animation
+      final targetOffset = Offset(
+        _dragOffset.dx + (_velocity.dx * velocityFactor),
+        _dragOffset.dy + (_velocity.dy.abs() * -velocityFactor) - 80, // Always fly up
+      );
+
+      _setupAnimations(targetOffset);
+      _removeController.forward(from: 0.0);
+    } else {
+      // Snap back with animation
+      setState(() {
+        _dragOffset = Offset.zero;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.onRemove == null) {
+      // No callback - just show the child without gesture handling
+      return widget.child;
+    }
+
+    return GestureDetector(
+      onPanUpdate: _onPanUpdate,
+      onPanEnd: _onPanEnd,
+      child: AnimatedBuilder(
+        animation: _removeController,
+        builder: (context, child) {
+          Offset offset;
+          double scale;
+          double opacity;
+
+          if (_isRemoving) {
+            // Use animated values during removal
+            offset = _flyAwayAnimation.value;
+            scale = _scaleAnimation.value;
+            opacity = _opacityAnimation.value;
+          } else {
+            // Use drag values during drag
+            offset = _dragOffset;
+            scale = _calculateScale(_dragOffset.dy);
+            opacity = _calculateOpacity(_dragOffset.dy);
+          }
+
+          // Visual hint: slight pink tint when past threshold
+          final showRemoveHint = _dragOffset.dy <= _removeThreshold && !_isRemoving;
+
+          Widget content = widget.child;
+          if (showRemoveHint) {
+            content = ColorFiltered(
+              colorFilter: ColorFilter.mode(
+                AppColors.accentPink.withAlpha(100),
+                BlendMode.srcATop,
+              ),
+              child: content,
+            );
+          }
+
+          return Transform.translate(
+            offset: offset,
+            child: Transform.scale(
+              scale: scale,
+              child: Opacity(
+                opacity: opacity,
+                child: content,
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 }

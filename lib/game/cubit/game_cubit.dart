@@ -102,6 +102,7 @@ class GameCubit extends Cubit<GameState> {
       starsEarnedThisGame: 0,
       lastStarThreshold: (progress.score ~/ StarConfig.pointsPerStar) * StarConfig.pointsPerStar,
       showStarEarnedAnimation: false,
+      starsEarnedThisRound: 0,
     ));
   }
 
@@ -145,6 +146,7 @@ class GameCubit extends Cubit<GameState> {
       starsEarnedThisGame: 0,
       lastStarThreshold: 0,
       showStarEarnedAnimation: false,
+      starsEarnedThisRound: 0,
     ));
   }
 
@@ -1132,16 +1134,76 @@ class GameCubit extends Cubit<GameState> {
   void clearSelection() {
     _pendingLetterId = null;
     _pendingLetterEnteredAt = null;
+
+    // Smart deletion for multi-word entries:
+    // 1. If there's a current selection, just clear that (keep committed word)
+    // 2. If no selection but committed word exists, delete the last word segment
+    // 3. If nothing, do nothing
+
+    if (state.selectedLetterIds.isNotEmpty) {
+      // Case 1: Clear current selection only, keep committed word
+      emit(state.copyWith(
+        selectedLetterIds: [],
+        clearDragPosition: true,
+        repeatUsageCount: 0, // Reset repeat count for current selection
+        isPureConnection: false,
+        showConnectionAnimation: false,
+        clearPendingLetterId: true,
+        clearLetterDwellStartTime: true,
+      ));
+    } else if (state.committedWord.isNotEmpty) {
+      // Case 2: No selection, but have committed word - delete last word segment
+      // "PETER REEVES " -> "PETER "
+      // "PETER " -> ""
+      final committed = state.committedWord.trimRight(); // Remove trailing space
+      final lastSpaceIndex = committed.lastIndexOf(' ');
+
+      String newCommitted;
+      int newSpaceCount;
+
+      if (lastSpaceIndex == -1) {
+        // No space found - this is the only/first word, clear everything
+        newCommitted = '';
+        newSpaceCount = 0;
+      } else {
+        // Keep everything up to and including the last space
+        newCommitted = committed.substring(0, lastSpaceIndex + 1);
+        // Count remaining spaces in new committed word
+        newSpaceCount = newCommitted.split(' ').length - 1;
+      }
+
+      emit(state.copyWith(
+        committedWord: newCommitted,
+        spaceUsageCount: newSpaceCount,
+        clearDragPosition: true,
+        isPureConnection: false,
+        showConnectionAnimation: false,
+        clearPendingLetterId: true,
+        clearLetterDwellStartTime: true,
+      ));
+    }
+    // Case 3: Nothing to clear - do nothing
+  }
+
+  /// Remove a specific letter from the current selection by index
+  /// Used for swipe-to-remove gesture in the word display area
+  void removeLetterAt(int index) {
+    if (index < 0 || index >= state.selectedLetterIds.length) return;
+
+    final newSelection = [...state.selectedLetterIds];
+    newSelection.removeAt(index);
+
+    // If we removed a repeated letter (x2), decrement repeat count
+    // Check if this was a repeat by seeing if the same ID appears before this index
+    final removedId = state.selectedLetterIds[index];
+    final wasRepeat = index > 0 &&
+        state.selectedLetterIds.sublist(0, index).contains(removedId);
+
     emit(state.copyWith(
-      selectedLetterIds: [],
-      committedWord: '', // Also clear committed word
-      clearDragPosition: true,
-      spaceUsageCount: 0, // Reset bonus counts
-      repeatUsageCount: 0,
-      isPureConnection: false, // Reset pure connection tracking
-      showConnectionAnimation: false,
-      clearPendingLetterId: true,
-      clearLetterDwellStartTime: true,
+      selectedLetterIds: newSelection,
+      repeatUsageCount: wasRepeat
+          ? (state.repeatUsageCount - 1).clamp(0, 999)
+          : state.repeatUsageCount,
     ));
   }
 
@@ -1670,8 +1732,7 @@ class GameCubit extends Cubit<GameState> {
     final newWords = [...state.completedWords, word];
     final nextCategoryIndex = state.categoryIndex + 1;
 
-    // Check if player earned any stars (every 300 points)
-    _checkAndAwardStars(newScore);
+    // Note: Star earning is now checked at end of letter round for dramatic reveal
 
     // Time bonus for space usage
     var timeBonus = state.spaceUsageCount * TimeConfig.spaceTimeBonus;
@@ -1761,6 +1822,9 @@ class GameCubit extends Cubit<GameState> {
     // STOP the timer during celebration
     _timer?.cancel();
 
+    // Check if player earned any stars this round (every 300 points)
+    final starsEarnedThisRound = _calculateStarsEarnedThisRound(newScore);
+
     // Play round complete celebration
     AudioService.instance.play(GameSound.roundComplete);
     HapticService.instance.success();
@@ -1782,7 +1846,38 @@ class GameCubit extends Cubit<GameState> {
       repeatUsageCount: 0,
       hintsRemaining: state.hintsRemaining + 1, // Award extra hint for completing letter
       showConnectionAnimation: false, // Clear animation flag
+      starsEarnedThisRound: starsEarnedThisRound,
+      // If stars were earned, update totals and show animation flag
+      stars: state.stars + starsEarnedThisRound,
+      starsEarnedThisGame: state.starsEarnedThisGame + starsEarnedThisRound,
+      lastStarThreshold: starsEarnedThisRound > 0
+          ? ((newScore ~/ StarConfig.pointsPerStar) * StarConfig.pointsPerStar)
+          : state.lastStarThreshold,
+      showStarEarnedAnimation: starsEarnedThisRound > 0,
     ));
+
+    // Save star balance if earned any
+    if (starsEarnedThisRound > 0) {
+      _saveStars();
+    }
+  }
+
+  /// Calculate how many new stars were earned based on score crossing thresholds
+  /// Returns the number of NEW stars earned (not total)
+  int _calculateStarsEarnedThisRound(int newScore) {
+    final threshold = StarConfig.pointsPerStar;
+    final previousThreshold = state.lastStarThreshold;
+
+    // Calculate which threshold we're at now
+    final newThreshold = (newScore ~/ threshold) * threshold;
+
+    if (newThreshold > previousThreshold) {
+      // Crossed one or more thresholds - calculate how many stars
+      final starsEarned = (newThreshold - previousThreshold) ~/ threshold;
+      return starsEarned;
+    }
+
+    return 0;
   }
 
   /// Continue to next round after letter complete celebration
@@ -1823,6 +1918,8 @@ class GameCubit extends Cubit<GameState> {
       isPlaying: false, // Timer paused until wheel lands
       skipCheatUsedThisRound: false, // Reset cheat for new letter round
       clearUsedHintWords: true, // Reset hint tracking for new letter round
+      starsEarnedThisRound: 0, // Reset for next round
+      showStarEarnedAnimation: false, // Clear animation flag
     ));
     // Note: Timer will start in onWheelLanded()
   }
@@ -1935,6 +2032,7 @@ class GameCubit extends Cubit<GameState> {
       starsEarnedThisGame: 0,
       lastStarThreshold: 0,
       showStarEarnedAnimation: false,
+      starsEarnedThisRound: 0,
     ));
   }
 
@@ -2028,40 +2126,6 @@ class GameCubit extends Cubit<GameState> {
   // ============================================
   // STAR CURRENCY METHODS
   // ============================================
-
-  /// Check if player earned a star (every 300 points)
-  void _checkAndAwardStars(int newScore) {
-    final threshold = StarConfig.pointsPerStar;
-    final previousThreshold = state.lastStarThreshold;
-
-    // Calculate how many thresholds we've crossed
-    final newThreshold = (newScore ~/ threshold) * threshold;
-
-    if (newThreshold > previousThreshold) {
-      // Crossed a new threshold - award star(s)
-      final starsEarned = (newThreshold - previousThreshold) ~/ threshold;
-
-      // Play star earned sound and haptic
-      AudioService.instance.play(GameSound.mysteryReward); // Reuse reward sound
-      HapticService.instance.success();
-
-      emit(state.copyWith(
-        stars: state.stars + starsEarned,
-        starsEarnedThisGame: state.starsEarnedThisGame + starsEarned,
-        lastStarThreshold: newThreshold,
-        showStarEarnedAnimation: true,
-      ));
-
-      // Clear animation flag after delay
-      Future.delayed(const Duration(milliseconds: 1500), () {
-        if (isClosed) return;
-        emit(state.copyWith(showStarEarnedAnimation: false));
-      });
-
-      // Save updated star balance
-      _saveStars();
-    }
-  }
 
   /// Skip current category using 1 star (no cheat code needed)
   /// Returns true if skip was successful, false if not enough stars

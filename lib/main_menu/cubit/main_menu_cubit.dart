@@ -16,6 +16,7 @@ class MainMenuCubit extends Cubit<MainMenuState> {
     final highScore = await storage.getHighScore();
     final gamesPlayed = await storage.getTotalGames();
     final totalWins = await storage.getTotalWins();
+    final stars = await storage.loadStars();
     final topSessions = await storage.getTopScores(limit: 10);
 
     // Convert sessions to high score entries
@@ -34,6 +35,7 @@ class MainMenuCubit extends Cubit<MainMenuState> {
       gamesPlayed: gamesPlayed,
       totalWins: totalWins,
       topScores: topScores,
+      stars: stars,
     ));
   }
 

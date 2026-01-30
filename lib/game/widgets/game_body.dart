@@ -252,34 +252,22 @@ class _GameBodyState extends State<GameBody>
             _showMysteryOutcome(state.lastMysteryOutcome!);
           },
         ),
-        // Star earned notification
+        // Star earned - play celebration sound and haptic (UI shows big reveal on letter complete screen)
         BlocListener<GameCubit, GameState>(
           listenWhen: (previous, current) =>
               !previous.showStarEarnedAnimation &&
               current.showStarEarnedAnimation,
           listener: (context, state) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.star, color: Colors.black, size: 20),
-                    const SizedBox(width: 8),
-                    Text(
-                      '+1 STAR EARNED!',
-                      style: GoogleFonts.orbitron(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black,
-                      ),
-                    ),
-                  ],
-                ),
-                backgroundColor: AppColors.accentGold,
-                duration: const Duration(seconds: 2),
-                behavior: SnackBarBehavior.floating,
-                margin: const EdgeInsets.only(bottom: 80, left: 50, right: 50),
-              ),
-            );
+            // Play star celebration sound and haptic
+            AudioService.instance.play(GameSound.mysteryReward);
+            HapticService.instance.success();
+            // Triple burst haptic for excitement
+            Future.delayed(const Duration(milliseconds: 150), () {
+              HapticService.instance.medium();
+            });
+            Future.delayed(const Duration(milliseconds: 300), () {
+              HapticService.instance.success();
+            });
           },
         ),
         // Reload high score when game ends (in case new record was set)
@@ -674,10 +662,21 @@ class _GameBodyState extends State<GameBody>
 
   Widget _buildLetterCompleteScreen(BuildContext context, GameState state) {
     final completedLetter = state.currentLetter ?? '?';
+    final earnedStar = state.starsEarnedThisRound > 0;
+
+    // Delay timings: if star was earned, show star celebration first
+    final statsDelay = earnedStar ? 1500 : 0;
+    final buttonDelay = earnedStar ? 3300 : 1800;
 
     return Column(
       children: [
         const Spacer(flex: 2),
+
+        // Star celebration (if earned)
+        if (earnedStar) ...[
+          _buildStarRevealAnimation(state.starsEarnedThisRound),
+          const SizedBox(height: 20),
+        ],
 
         // Celebration icon with pulse animation
         TweenAnimationBuilder<double>(
@@ -688,8 +687,8 @@ class _GameBodyState extends State<GameBody>
             return Transform.scale(
               scale: scale,
               child: Container(
-                width: 100,
-                height: 100,
+                width: earnedStar ? 70 : 100,
+                height: earnedStar ? 70 : 100,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: const LinearGradient(
@@ -703,50 +702,60 @@ class _GameBodyState extends State<GameBody>
                     ),
                   ],
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.check,
                   color: AppColors.black,
-                  size: 60,
+                  size: earnedStar ? 40 : 60,
                 ),
               ),
             );
           },
         ),
 
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
 
         // Congratulations message
         Text(
           'LETTER COMPLETE!',
           style: GoogleFonts.orbitron(
             color: AppColors.accentGold,
-            fontSize: 28,
+            fontSize: 24,
             fontWeight: FontWeight.bold,
             letterSpacing: 2,
           ),
         ),
 
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
 
         // Completed letter badge
         Text(
           '"$completedLetter" CLEARED',
           style: GoogleFonts.exo2(
             color: Colors.white,
-            fontSize: 20,
+            fontSize: 18,
             fontWeight: FontWeight.w600,
           ),
         ),
 
-        const SizedBox(height: 32),
+        const SizedBox(height: 24),
 
-        // Animated stats panel
-        CelebrationStatsPanel(
-          score: state.score,
-          lettersCompleted: state.completedLetters.length,
-          timeRemaining: state.timeRemaining,
-          pointsEarned: state.pointsEarnedInRound,
-          letterCompletionBonus: TimeConfig.letterCompletionBonus,
+        // Animated stats panel (delayed if star was earned)
+        FutureBuilder(
+          future: Future.delayed(Duration(milliseconds: statsDelay)),
+          builder: (context, snapshot) {
+            final show = snapshot.connectionState == ConnectionState.done;
+            return AnimatedOpacity(
+              opacity: show ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 500),
+              child: CelebrationStatsPanel(
+                score: state.score,
+                lettersCompleted: state.completedLetters.length,
+                timeRemaining: state.timeRemaining,
+                pointsEarned: state.pointsEarnedInRound,
+                letterCompletionBonus: TimeConfig.letterCompletionBonus,
+              ),
+            );
+          },
         ),
 
         const Spacer(flex: 1),
@@ -759,7 +768,7 @@ class _GameBodyState extends State<GameBody>
           // Delay the button appearance
           builder: (context, opacity, child) {
             return FutureBuilder(
-              future: Future.delayed(const Duration(milliseconds: 1800)),
+              future: Future.delayed(Duration(milliseconds: buttonDelay)),
               builder: (context, snapshot) {
                 final show = snapshot.connectionState == ConnectionState.done;
                 return AnimatedOpacity(
@@ -813,6 +822,132 @@ class _GameBodyState extends State<GameBody>
     );
   }
 
+  /// Big star reveal animation for end of round celebration
+  Widget _buildStarRevealAnimation(int starsEarned) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 1200),
+      curve: Curves.elasticOut,
+      builder: (context, progress, child) {
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Animated glow background
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                // Outer glow pulse
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 600),
+                  width: 140 * progress,
+                  height: 140 * progress,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        AppColors.accentGold.withAlpha((100 * progress).toInt()),
+                        AppColors.accentGold.withAlpha((50 * progress).toInt()),
+                        Colors.transparent,
+                      ],
+                      stops: const [0.3, 0.6, 1.0],
+                    ),
+                  ),
+                ),
+                // Star icon with scale and rotation
+                Transform.scale(
+                  scale: progress,
+                  child: Transform.rotate(
+                    angle: (1 - progress) * 0.5,
+                    child: Container(
+                      width: 90,
+                      height: 90,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Color(0xFFFFD700), // Gold
+                            Color(0xFFFFA500), // Orange
+                            Color(0xFFFF8C00), // Dark orange
+                          ],
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.accentGold.withAlpha(200),
+                            blurRadius: 25,
+                            spreadRadius: 8,
+                          ),
+                          BoxShadow(
+                            color: Colors.white.withAlpha(100),
+                            blurRadius: 10,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                        border: Border.all(
+                          color: Colors.white.withAlpha(180),
+                          width: 3,
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.star,
+                        color: Colors.white,
+                        size: 50,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // Text announcement
+            Opacity(
+              opacity: progress.clamp(0.0, 1.0),
+              child: Text(
+                starsEarned == 1 ? '+1 STAR EARNED!' : '+$starsEarned STARS EARNED!',
+                style: GoogleFonts.orbitron(
+                  color: AppColors.accentGold,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 2,
+                  shadows: [
+                    Shadow(
+                      color: AppColors.accentGold.withAlpha(150),
+                      blurRadius: 10,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            // Star count display
+            Opacity(
+              opacity: progress.clamp(0.0, 1.0),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.star,
+                    color: AppColors.accentGold.withAlpha(200),
+                    size: 16,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Total: ${context.read<GameCubit>().state.stars}',
+                    style: GoogleFonts.exo2(
+                      color: Colors.white.withAlpha(200),
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildPlayingScreen(BuildContext context, GameState state) {
     return Column(
       children: [
@@ -835,7 +970,7 @@ class _GameBodyState extends State<GameBody>
               const SizedBox(width: 8),
             ],
             Flexible(
-              child: CategoryBanner(category: state.category),
+              child: _buildCategoryWithSkipBadge(context, state),
             ),
             const SizedBox(width: 8),
             // Category progress indicator (1/5, 2/5, etc.)
@@ -854,6 +989,9 @@ class _GameBodyState extends State<GameBody>
           shake: state.lastAnswerCorrect == false,
           pendingLetterId: state.pendingLetterId,
           letterDwellStartTime: state.letterDwellStartTime,
+          onRemoveLetterAt: (index) {
+            context.read<GameCubit>().removeLetterAt(index);
+          },
         ),
 
         const SizedBox(height: AppSpacing.sm),
@@ -924,6 +1062,224 @@ class _GameBodyState extends State<GameBody>
             fontSize: 10,
             fontWeight: FontWeight.bold,
           ),
+        ),
+      ),
+    );
+  }
+
+  /// Category banner with skip badge overlaid
+  Widget _buildCategoryWithSkipBadge(BuildContext context, GameState state) {
+    final hasEnoughStars = state.stars >= StarConfig.skipCategoryCost;
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        // Category banner
+        CategoryBanner(category: state.category),
+        // Skip badge positioned at bottom-right corner
+        Positioned(
+          right: -4,
+          bottom: -6,
+          child: GestureDetector(
+            onTap: () {
+              if (hasEnoughStars) {
+                context.read<GameCubit>().skipCategoryWithStar();
+              } else {
+                _showNotEnoughStarsModal(context, state.stars);
+              }
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              decoration: BoxDecoration(
+                gradient: hasEnoughStars
+                    ? const LinearGradient(
+                        colors: [Color(0xFF9C27B0), Color(0xFF7B1FA2)],
+                      )
+                    : null,
+                color: hasEnoughStars ? null : AppColors.primaryDarkPurple.withAlpha(200),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: hasEnoughStars
+                      ? AppColors.accentGold.withAlpha(180)
+                      : Colors.white.withAlpha(60),
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.black.withAlpha(100),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.skip_next,
+                    color: hasEnoughStars
+                        ? AppColors.accentGold
+                        : Colors.white.withAlpha(100),
+                    size: 14,
+                  ),
+                  const SizedBox(width: 2),
+                  Icon(
+                    Icons.star,
+                    color: hasEnoughStars
+                        ? AppColors.accentGold
+                        : Colors.white.withAlpha(100),
+                    size: 12,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showNotEnoughStarsModal(BuildContext context, int currentStars) {
+    // Pause the game timer while modal is open
+    final cubit = context.read<GameCubit>();
+    cubit.onAppPaused();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false, // Must tap button to dismiss
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.primaryDarkPurple,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: AppColors.accentGold.withAlpha(100)),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Star icon with X
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [
+                        AppColors.accentGold.withAlpha(50),
+                        AppColors.accentOrange.withAlpha(50),
+                      ],
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.star,
+                    color: AppColors.accentGold.withAlpha(150),
+                    size: 40,
+                  ),
+                ),
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    width: 24,
+                    height: 24,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.accentPink,
+                    ),
+                    child: const Icon(
+                      Icons.close,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'NOT ENOUGH STARS',
+              style: GoogleFonts.orbitron(
+                color: AppColors.accentGold,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'You need ${StarConfig.skipCategoryCost} star to skip this category.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.exo2(
+                color: Colors.white.withAlpha(200),
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  'Current balance: ',
+                  style: GoogleFonts.exo2(
+                    color: Colors.white.withAlpha(150),
+                    fontSize: 13,
+                  ),
+                ),
+                Icon(
+                  Icons.star,
+                  color: AppColors.accentGold,
+                  size: 16,
+                ),
+                Text(
+                  ' $currentStars',
+                  style: GoogleFonts.orbitron(
+                    color: AppColors.accentGold,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Earn stars by scoring ${StarConfig.pointsPerStar}+ points!',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.exo2(
+                color: AppColors.accentCyan.withAlpha(200),
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 20),
+            GestureDetector(
+              onTap: () {
+                Navigator.pop(ctx);
+                // Resume the game timer
+                cubit.onAppResumed();
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 32,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [AppColors.accentGold, AppColors.accentOrange],
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Text(
+                  'GOT IT',
+                  style: GoogleFonts.orbitron(
+                    color: AppColors.black,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1089,24 +1445,6 @@ class _GameBodyState extends State<GameBody>
 
           const SizedBox(width: AppSpacing.xs),
 
-          // Stars display
-          Column(
-            children: [
-              _buildStarBadge(state.stars),
-              const SizedBox(height: 4),
-              const Text(
-                'STARS',
-                style: TextStyle(
-                  color: AppColors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(width: AppSpacing.xs),
-
           // Completed letters count
           Column(
             children: [
@@ -1193,6 +1531,9 @@ class _GameBodyState extends State<GameBody>
                       ],
                     ),
                   ),
+                  // Star icons below score
+                  const SizedBox(height: 4),
+                  _buildStarIcons(state.stars),
                 ],
               ),
             ),
@@ -1230,6 +1571,46 @@ class _GameBodyState extends State<GameBody>
           ),
         ],
       ),
+    );
+  }
+
+  /// Build simple star icons to show current star count
+  Widget _buildStarIcons(int starCount) {
+    if (starCount <= 0) {
+      return const SizedBox.shrink();
+    }
+
+    // Show up to 5 stars as icons, with count if more
+    final displayStars = starCount.clamp(0, 5);
+    final hasMore = starCount > 5;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ...List.generate(
+          displayStars,
+          (index) => Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 1),
+            child: Icon(
+              Icons.star,
+              color: AppColors.accentGold,
+              size: 14,
+            ),
+          ),
+        ),
+        if (hasMore)
+          Padding(
+            padding: const EdgeInsets.only(left: 2),
+            child: Text(
+              '+${starCount - 5}',
+              style: GoogleFonts.exo2(
+                color: AppColors.accentGold,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -1342,63 +1723,6 @@ class _GameBodyState extends State<GameBody>
     );
   }
 
-  Widget _buildStarBadge(int count) {
-    return Container(
-      width: 42,
-      height: 42,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFFFD700), // Gold
-            Color(0xFFFFA500), // Orange
-            Color(0xFFFF8C00), // Dark orange
-          ],
-        ),
-        border: Border.all(
-          color: const Color(0xFFB8860B),
-          width: 2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.accentGold.withAlpha(150),
-            blurRadius: 8,
-            spreadRadius: 2,
-          ),
-        ],
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Star icon background
-          const Icon(
-            Icons.star,
-            color: Colors.white24,
-            size: 30,
-          ),
-          // Count
-          Text(
-            '$count',
-            style: GoogleFonts.orbitron(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              shadows: [
-                const Shadow(
-                  color: Colors.black54,
-                  offset: Offset(1, 1),
-                  blurRadius: 2,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildCoinBadge({
     required String text,
     required Color backgroundColor,
@@ -1461,19 +1785,25 @@ class _GameBodyState extends State<GameBody>
             ),
           ),
           child: Center(
-            child: Text(
-              text,
-              style: TextStyle(
-                color: textColor,
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                shadows: [
-                  Shadow(
-                    color: Colors.black.withAlpha(50),
-                    offset: const Offset(0, 1),
-                    blurRadius: 2,
+            child: Padding(
+              padding: const EdgeInsets.all(6),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  text,
+                  style: TextStyle(
+                    color: textColor,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    shadows: [
+                      Shadow(
+                        color: Colors.black.withAlpha(50),
+                        offset: const Offset(0, 1),
+                        blurRadius: 2,
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),
@@ -1493,8 +1823,6 @@ class _GameBodyState extends State<GameBody>
     final canUseHint = state.hintsRemaining > 0 &&
         state.hintWord == null &&
         state.timeRemaining >= 15;
-    // Can skip category if has at least 1 star
-    final canSkip = state.stars >= StarConfig.skipCategoryCost;
 
     return Padding(
       padding: const EdgeInsets.symmetric(
@@ -1559,21 +1887,6 @@ class _GameBodyState extends State<GameBody>
               isActive: canUseHint,
               size: 44,
               badgeCount: state.hintsRemaining,
-            ),
-          ),
-
-          // SKIP button - skip category using 1 star
-          GestureDetector(
-            onTap: canSkip
-                ? () => context.read<GameCubit>().skipCategoryWithStar()
-                : null,
-            child: ActionBubble(
-              label: '⏭',
-              isSubmit: false,
-              isStar: true,
-              isActive: canSkip,
-              size: 44,
-              badgeCount: StarConfig.skipCategoryCost,
             ),
           ),
 

@@ -138,25 +138,8 @@ class MainMenuBody extends StatelessWidget {
 
                     const Spacer(flex: 1),
 
-                    // Decorative stars
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(
-                        5,
-                        (index) => Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: AppSpacing.xs,
-                          ),
-                          child: Icon(
-                            Icons.star,
-                            color: index < 3
-                                ? AppColors.accentGold
-                                : AppColors.accentGold.withAlpha(77),
-                            size: 24,
-                          ),
-                        ),
-                      ),
-                    ),
+                    // Star balance display
+                    _StarBalanceDisplay(stars: state.stars),
 
                     const SizedBox(height: AppSpacing.lg),
 
@@ -928,4 +911,87 @@ class _ConstellationPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// Star balance display showing actual star count
+class _StarBalanceDisplay extends StatelessWidget {
+  const _StarBalanceDisplay({required this.stars});
+
+  final int stars;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.sm,
+      ),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.accentGold.withAlpha(30),
+            AppColors.accentOrange.withAlpha(30),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: AppColors.accentGold.withAlpha(100),
+          width: 1.5,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Star icon with glow
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  AppColors.accentGold,
+                  AppColors.accentOrange,
+                ],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.accentGold.withAlpha(100),
+                  blurRadius: 8,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: const Icon(
+              Icons.star,
+              color: Colors.white,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          // Star count
+          Text(
+            '$stars',
+            style: GoogleFonts.orbitron(
+              color: AppColors.accentGold,
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.xs),
+          Text(
+            'STARS',
+            style: GoogleFonts.exo2(
+              color: AppColors.accentGold.withAlpha(180),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
