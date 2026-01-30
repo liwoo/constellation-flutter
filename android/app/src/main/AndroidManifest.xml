@@ -1,6 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Required for shake detection with sensors_plus -->
+    <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS"/>
+
     <application
-        android:label="Constellation"
+        android:label="Alpha Quest"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
