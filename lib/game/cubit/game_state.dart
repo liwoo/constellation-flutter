@@ -137,6 +137,11 @@ class GameState extends Equatable {
     this.lastConnectedLetterId, // For "just connected" flash animation
     // Cheat code tracking
     this.skipCheatUsedThisRound = false, // Skip category cheat (once per letter round)
+    // Star currency system
+    this.stars = 2, // Current star balance (persisted across games)
+    this.starsEarnedThisGame = 0, // Stars earned in current game session
+    this.lastStarThreshold = 0, // Last score threshold crossed for star award
+    this.showStarEarnedAnimation = false, // Trigger star earned animation
   });
 
   /// Special ID for space character in selectedLetterIds
@@ -205,6 +210,12 @@ class GameState extends Equatable {
 
   // Cheat code tracking
   final bool skipCheatUsedThisRound; // Skip category cheat used this letter round
+
+  // Star currency system
+  final int stars; // Current star balance (persisted across games)
+  final int starsEarnedThisGame; // Stars earned in current game session
+  final int lastStarThreshold; // Last score threshold crossed for star award
+  final bool showStarEarnedAnimation; // Trigger star earned animation
 
   /// Points earned in current letter round
   int get pointsEarnedInRound => score - letterRoundStartScore;
@@ -304,6 +315,10 @@ class GameState extends Equatable {
         letterDwellStartTime,
         lastConnectedLetterId,
         skipCheatUsedThisRound,
+        stars,
+        starsEarnedThisGame,
+        lastStarThreshold,
+        showStarEarnedAnimation,
       ];
 
   GameState copyWith({
@@ -360,6 +375,10 @@ class GameState extends Equatable {
     int? lastConnectedLetterId,
     bool clearLastConnectedLetterId = false,
     bool? skipCheatUsedThisRound,
+    int? stars,
+    int? starsEarnedThisGame,
+    int? lastStarThreshold,
+    bool? showStarEarnedAnimation,
   }) {
     return GameState(
       letters: letters ?? this.letters,
@@ -403,6 +422,10 @@ class GameState extends Equatable {
       letterDwellStartTime: clearLetterDwellStartTime ? null : (letterDwellStartTime ?? this.letterDwellStartTime),
       lastConnectedLetterId: clearLastConnectedLetterId ? null : (lastConnectedLetterId ?? this.lastConnectedLetterId),
       skipCheatUsedThisRound: skipCheatUsedThisRound ?? this.skipCheatUsedThisRound,
+      stars: stars ?? this.stars,
+      starsEarnedThisGame: starsEarnedThisGame ?? this.starsEarnedThisGame,
+      lastStarThreshold: lastStarThreshold ?? this.lastStarThreshold,
+      showStarEarnedAnimation: showStarEarnedAnimation ?? this.showStarEarnedAnimation,
     );
   }
 }

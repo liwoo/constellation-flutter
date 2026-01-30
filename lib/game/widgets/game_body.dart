@@ -252,6 +252,36 @@ class _GameBodyState extends State<GameBody>
             _showMysteryOutcome(state.lastMysteryOutcome!);
           },
         ),
+        // Star earned notification
+        BlocListener<GameCubit, GameState>(
+          listenWhen: (previous, current) =>
+              !previous.showStarEarnedAnimation &&
+              current.showStarEarnedAnimation,
+          listener: (context, state) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.star, color: Colors.black, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      '+1 STAR EARNED!',
+                      style: GoogleFonts.orbitron(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
+                    ),
+                  ],
+                ),
+                backgroundColor: AppColors.accentGold,
+                duration: const Duration(seconds: 2),
+                behavior: SnackBarBehavior.floating,
+                margin: const EdgeInsets.only(bottom: 80, left: 50, right: 50),
+              ),
+            );
+          },
+        ),
         // Reload high score when game ends (in case new record was set)
         BlocListener<GameCubit, GameState>(
           listenWhen: (previous, current) =>
@@ -1059,6 +1089,24 @@ class _GameBodyState extends State<GameBody>
 
           const SizedBox(width: AppSpacing.xs),
 
+          // Stars display
+          Column(
+            children: [
+              _buildStarBadge(state.stars),
+              const SizedBox(height: 4),
+              const Text(
+                'STARS',
+                style: TextStyle(
+                  color: AppColors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(width: AppSpacing.xs),
+
           // Completed letters count
           Column(
             children: [
@@ -1066,6 +1114,7 @@ class _GameBodyState extends State<GameBody>
                 text: '${state.completedLetters.length}',
                 backgroundColor: AppColors.accentGold,
                 textColor: AppColors.black,
+                size: 42,
               ),
               const SizedBox(height: 4),
               const Text(
@@ -1158,6 +1207,7 @@ class _GameBodyState extends State<GameBody>
                     ? AppColors.accentPink
                     : AppColors.accentOrange,
                 textColor: AppColors.white,
+                size: 42,
               ),
               const SizedBox(height: 4),
               const Text(
@@ -1292,10 +1342,68 @@ class _GameBodyState extends State<GameBody>
     );
   }
 
+  Widget _buildStarBadge(int count) {
+    return Container(
+      width: 42,
+      height: 42,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFFFFD700), // Gold
+            Color(0xFFFFA500), // Orange
+            Color(0xFFFF8C00), // Dark orange
+          ],
+        ),
+        border: Border.all(
+          color: const Color(0xFFB8860B),
+          width: 2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.accentGold.withAlpha(150),
+            blurRadius: 8,
+            spreadRadius: 2,
+          ),
+        ],
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Star icon background
+          const Icon(
+            Icons.star,
+            color: Colors.white24,
+            size: 30,
+          ),
+          // Count
+          Text(
+            '$count',
+            style: GoogleFonts.orbitron(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              shadows: [
+                const Shadow(
+                  color: Colors.black54,
+                  offset: Offset(1, 1),
+                  blurRadius: 2,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildCoinBadge({
     required String text,
     required Color backgroundColor,
     required Color textColor,
+    double size = 52,
   }) {
     final HSLColor hsl = HSLColor.fromColor(backgroundColor);
     final Color highlightColor = hsl.withLightness((hsl.lightness + 0.2).clamp(0.0, 1.0)).toColor();
@@ -1303,8 +1411,8 @@ class _GameBodyState extends State<GameBody>
     final Color darkShadow = hsl.withLightness((hsl.lightness - 0.35).clamp(0.0, 1.0)).toColor();
 
     return Container(
-      width: 52,
-      height: 52,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         boxShadow: [
@@ -1385,6 +1493,8 @@ class _GameBodyState extends State<GameBody>
     final canUseHint = state.hintsRemaining > 0 &&
         state.hintWord == null &&
         state.timeRemaining >= 15;
+    // Can skip category if has at least 1 star
+    final canSkip = state.stars >= StarConfig.skipCategoryCost;
 
     return Padding(
       padding: const EdgeInsets.symmetric(
@@ -1403,7 +1513,7 @@ class _GameBodyState extends State<GameBody>
               label: 'DEL',
               isSubmit: false,
               isActive: hasContent,
-              size: 48,
+              size: 44,
             ),
           ),
 
@@ -1417,7 +1527,7 @@ class _GameBodyState extends State<GameBody>
               isSubmit: false,
               isBonus: true,
               isActive: canAddSpace,
-              size: 48,
+              size: 44,
               badgeCount: state.spaceUsageCount,
             ),
           ),
@@ -1432,7 +1542,7 @@ class _GameBodyState extends State<GameBody>
               isSubmit: false,
               isBonus: true,
               isActive: canRepeat,
-              size: 48,
+              size: 44,
               badgeCount: state.repeatUsageCount,
             ),
           ),
@@ -1447,8 +1557,23 @@ class _GameBodyState extends State<GameBody>
               isSubmit: false,
               isHint: true,
               isActive: canUseHint,
-              size: 48,
+              size: 44,
               badgeCount: state.hintsRemaining,
+            ),
+          ),
+
+          // SKIP button - skip category using 1 star
+          GestureDetector(
+            onTap: canSkip
+                ? () => context.read<GameCubit>().skipCategoryWithStar()
+                : null,
+            child: ActionBubble(
+              label: '⏭',
+              isSubmit: false,
+              isStar: true,
+              isActive: canSkip,
+              size: 44,
+              badgeCount: StarConfig.skipCategoryCost,
             ),
           ),
 
@@ -1461,7 +1586,7 @@ class _GameBodyState extends State<GameBody>
               label: 'GO',
               isSubmit: true,
               isActive: hasContent,
-              size: 48,
+              size: 44,
             ),
           ),
         ],
@@ -1544,6 +1669,57 @@ class _GameBodyState extends State<GameBody>
                 ),
               ),
               const SizedBox(height: 32),
+
+              // Continue with Stars button (only show if not a win and has enough stars)
+              if (!state.isWinner && state.stars >= StarConfig.continueCost) ...[
+                GestureDetector(
+                  onTap: () => context.read<GameCubit>().continueWithStars(),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 32,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF9C27B0), Color(0xFF7B1FA2)],
+                      ),
+                      borderRadius: BorderRadius.circular(30),
+                      border: Border.all(
+                        color: AppColors.accentGold,
+                        width: 2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.accentGold.withAlpha(100),
+                          blurRadius: 15,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.star,
+                          color: AppColors.accentGold,
+                          size: 24,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'CONTINUE (${StarConfig.continueCost}⭐)',
+                          style: GoogleFonts.orbitron(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+
               // Try Again button
               GestureDetector(
                 onTap: () => context.read<GameCubit>().resetGame(),

@@ -11,6 +11,7 @@ class ActionBubble extends StatelessWidget {
     required this.isSubmit,
     this.isBonus = false,
     this.isHint = false,
+    this.isStar = false,
     this.isActive = false,
     this.onTap,
     this.size = AppConstants.letterBubbleSize,
@@ -21,6 +22,7 @@ class ActionBubble extends StatelessWidget {
   final bool isSubmit; // true = GO (green), false = DEL (red) or bonus
   final bool isBonus; // true = bonus button (gold/orange)
   final bool isHint; // true = hint button (cyan/purple)
+  final bool isStar; // true = star currency button (purple/gold)
   final bool isActive;
   final VoidCallback? onTap;
   final double size;
@@ -30,7 +32,9 @@ class ActionBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     // Use greyed out colors when inactive
     Color activeColor;
-    if (isHint) {
+    if (isStar) {
+      activeColor = const Color(0xFF9C27B0); // Purple for star buttons
+    } else if (isHint) {
       activeColor = AppColors.accentCyan; // Cyan for hint button
     } else if (isBonus) {
       activeColor = AppColors.accentGold; // Gold for bonus buttons
@@ -70,6 +74,48 @@ class ActionBubble extends StatelessWidget {
   }
 
   Widget _buildBadge() {
+    // Star buttons show cost with star icon
+    if (isStar) {
+      return Positioned(
+        right: -6,
+        top: -6,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          decoration: BoxDecoration(
+            color: AppColors.accentGold,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white, width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.black.withAlpha(100),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '$badgeCount',
+                style: const TextStyle(
+                  color: Colors.black,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Icon(
+                Icons.star,
+                color: Colors.black,
+                size: 10,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Regular bonus badge shows usage count
     return Positioned(
       right: -4,
       top: -4,

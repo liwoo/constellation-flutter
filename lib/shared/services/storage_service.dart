@@ -56,6 +56,7 @@ class StorageService {
   static const String _totalGamesKey = 'total_games';
   static const String _totalWinsKey = 'total_wins';
   static const String _savedProgressKey = 'saved_game_progress';
+  static const String _starsKey = 'star_balance';
 
   /// Initialize the storage service
   Future<void> init() async {
@@ -207,5 +208,22 @@ class StorageService {
   Future<void> clearGameProgress() async {
     await init();
     await _prefs!.remove(_savedProgressKey);
+  }
+
+  // ============================================
+  // STAR CURRENCY PERSISTENCE
+  // ============================================
+
+  /// Save current star balance
+  Future<void> saveStars(int stars) async {
+    await init();
+    await _prefs!.setInt(_starsKey, stars);
+  }
+
+  /// Load saved star balance (defaults to starting stars if none saved)
+  Future<int> loadStars() async {
+    await init();
+    // Default to StarConfig.startingStars (2) if no stars saved
+    return _prefs!.getInt(_starsKey) ?? 2;
   }
 }

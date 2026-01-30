@@ -70,6 +70,9 @@ class GameCubit extends Cubit<GameState> {
       return;
     }
 
+    // Load saved stars (persisted across games)
+    final savedStars = await StorageService.instance.loadStars();
+
     _initializeLetters();
     emit(state.copyWith(
       timeRemaining: progress.timeRemaining,
@@ -94,13 +97,21 @@ class GameCubit extends Cubit<GameState> {
       clearLastMysteryOutcome: true,
       clearPendingMysteryOrb: true,
       clearMysteryOrbDwellStartTime: true,
+      // Star tracking - load balance, calculate threshold from current score
+      stars: savedStars,
+      starsEarnedThisGame: 0,
+      lastStarThreshold: (progress.score ~/ StarConfig.pointsPerStar) * StarConfig.pointsPerStar,
+      showStarEarnedAnimation: false,
     ));
   }
 
   /// Start Alpha Quest game - go to spinning wheel (fresh start)
-  void startGame() {
+  void startGame() async {
     // Clear any saved progress when starting fresh
     StorageService.instance.clearGameProgress();
+
+    // Load saved stars (persisted across games)
+    final savedStars = await StorageService.instance.loadStars();
 
     _initializeLetters();
     emit(state.copyWith(
@@ -129,6 +140,11 @@ class GameCubit extends Cubit<GameState> {
       // Reset cheat code and hint tracking
       skipCheatUsedThisRound: false,
       clearUsedHintWords: true,
+      // Star tracking - preserve balance, reset per-game tracking
+      stars: savedStars,
+      starsEarnedThisGame: 0,
+      lastStarThreshold: 0,
+      showStarEarnedAnimation: false,
     ));
   }
 
@@ -1654,6 +1670,9 @@ class GameCubit extends Cubit<GameState> {
     final newWords = [...state.completedWords, word];
     final nextCategoryIndex = state.categoryIndex + 1;
 
+    // Check if player earned any stars (every 300 points)
+    _checkAndAwardStars(newScore);
+
     // Time bonus for space usage
     var timeBonus = state.spaceUsageCount * TimeConfig.spaceTimeBonus;
 
@@ -1875,8 +1894,12 @@ class GameCubit extends Cubit<GameState> {
   }
 
   /// Reset the game to initial state
-  void resetGame() {
+  void resetGame() async {
     _timer?.cancel();
+
+    // Load saved stars (persisted across games)
+    final savedStars = await StorageService.instance.loadStars();
+
     _initializeLetters();
     emit(state.copyWith(
       phase: GamePhase.notStarted,
@@ -1907,6 +1930,11 @@ class GameCubit extends Cubit<GameState> {
       // Reset cheat code and hint tracking
       skipCheatUsedThisRound: false,
       clearUsedHintWords: true,
+      // Star tracking - preserve balance, reset per-game tracking
+      stars: savedStars,
+      starsEarnedThisGame: 0,
+      lastStarThreshold: 0,
+      showStarEarnedAnimation: false,
     ));
   }
 
@@ -1995,6 +2023,136 @@ class GameCubit extends Cubit<GameState> {
       ));
     }
     return scrambled;
+  }
+
+  // ============================================
+  // STAR CURRENCY METHODS
+  // ============================================
+
+  /// Check if player earned a star (every 300 points)
+  void _checkAndAwardStars(int newScore) {
+    final threshold = StarConfig.pointsPerStar;
+    final previousThreshold = state.lastStarThreshold;
+
+    // Calculate how many thresholds we've crossed
+    final newThreshold = (newScore ~/ threshold) * threshold;
+
+    if (newThreshold > previousThreshold) {
+      // Crossed a new threshold - award star(s)
+      final starsEarned = (newThreshold - previousThreshold) ~/ threshold;
+
+      // Play star earned sound and haptic
+      AudioService.instance.play(GameSound.mysteryReward); // Reuse reward sound
+      HapticService.instance.success();
+
+      emit(state.copyWith(
+        stars: state.stars + starsEarned,
+        starsEarnedThisGame: state.starsEarnedThisGame + starsEarned,
+        lastStarThreshold: newThreshold,
+        showStarEarnedAnimation: true,
+      ));
+
+      // Clear animation flag after delay
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (isClosed) return;
+        emit(state.copyWith(showStarEarnedAnimation: false));
+      });
+
+      // Save updated star balance
+      _saveStars();
+    }
+  }
+
+  /// Skip current category using 1 star (no cheat code needed)
+  /// Returns true if skip was successful, false if not enough stars
+  bool skipCategoryWithStar() {
+    // Only works during active gameplay
+    if (state.phase != GamePhase.playingRound) return false;
+    // Need at least 1 star
+    if (state.stars < StarConfig.skipCategoryCost) return false;
+    // Need a current letter/category to skip
+    if (state.currentLetter == null) return false;
+
+    // Play feedback
+    AudioService.instance.play(GameSound.wordCorrect);
+    HapticService.instance.success();
+
+    final nextCategoryIndex = state.categoryIndex + 1;
+
+    // Check if we completed all 5 categories for this letter
+    if (nextCategoryIndex >= GameState.categoriesPerLetter) {
+      // Letter complete! Move to celebration
+      emit(state.copyWith(
+        stars: state.stars - StarConfig.skipCategoryCost,
+      ));
+      _saveStars();
+      _completeLetterRound(state.score, state.completedWords);
+    } else {
+      // Move to next category
+      final nextCategory = state.currentCategories[nextCategoryIndex];
+      emit(state.copyWith(
+        stars: state.stars - StarConfig.skipCategoryCost,
+        categoryIndex: nextCategoryIndex,
+        category: nextCategory,
+        selectedLetterIds: [],
+        committedWord: '',
+        clearLastAnswerCorrect: true,
+        clearLastTimeBonus: true,
+        phase: GamePhase.categoryReveal,
+        spaceUsageCount: 0,
+        repeatUsageCount: 0,
+        showConnectionAnimation: false,
+        isDragging: false,
+        clearDragPosition: true,
+        approachingLetterIds: [],
+        clearHintWord: true,
+      ));
+      _saveStars();
+    }
+
+    return true;
+  }
+
+  /// Continue game after time runs out using 3 stars
+  /// Returns true if continue was successful, false if not enough stars
+  bool continueWithStars() {
+    // Only works during game over phase
+    if (state.phase != GamePhase.gameOver) return false;
+    // Can only continue if it was a loss (not a win)
+    if (state.isWinner) return false;
+    // Need at least 3 stars
+    if (state.stars < StarConfig.continueCost) return false;
+
+    // Play feedback
+    AudioService.instance.play(GameSound.roundComplete);
+    HapticService.instance.success();
+
+    // Deduct stars and give 60 seconds to continue from same round
+    final continueTime = 60;
+
+    emit(state.copyWith(
+      stars: state.stars - StarConfig.continueCost,
+      timeRemaining: continueTime,
+      phase: GamePhase.playingRound,
+      isPlaying: true,
+      clearLastAnswerCorrect: true,
+    ));
+
+    _saveStars();
+    _startTimer();
+
+    return true;
+  }
+
+  /// Load saved stars from storage
+  Future<void> loadSavedStars() async {
+    final savedStars = await StorageService.instance.loadStars();
+    emit(state.copyWith(stars: savedStars));
+  }
+
+  /// Save current star balance to storage
+  Future<void> _saveStars() async {
+    await StorageService.instance.saveStars(state.stars);
   }
 
   // ============================================

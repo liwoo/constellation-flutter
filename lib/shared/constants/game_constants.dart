@@ -233,6 +233,23 @@ class DifficultyConfig {
   };
 }
 
+/// Star currency configuration
+class StarConfig {
+  const StarConfig._();
+
+  /// Points required to earn 1 star
+  static const int pointsPerStar = 300;
+
+  /// Starting star balance for new players
+  static const int startingStars = 2;
+
+  /// Cost to skip a category
+  static const int skipCategoryCost = 1;
+
+  /// Cost to continue after time runs out
+  static const int continueCost = 3;
+}
+
 /// Layout configuration for letter constellation
 class LayoutConfig {
   const LayoutConfig._();
