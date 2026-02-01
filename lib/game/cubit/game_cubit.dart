@@ -70,10 +70,13 @@ class GameCubit extends Cubit<GameState> {
       return;
     }
 
-    // Load saved stars (persisted across games)
-    final savedStars = await StorageService.instance.loadStars();
-
     _initializeLetters();
+
+    // Calculate how many stars should have already been earned based on saved score
+    // This ensures we don't double-award stars for points already scored
+    final alreadyEarnedStars = progress.score ~/ StarConfig.pointsPerStar;
+    final lastThreshold = alreadyEarnedStars * StarConfig.pointsPerStar;
+
     emit(state.copyWith(
       timeRemaining: progress.timeRemaining,
       score: progress.score,
@@ -97,22 +100,19 @@ class GameCubit extends Cubit<GameState> {
       clearLastMysteryOutcome: true,
       clearPendingMysteryOrb: true,
       clearMysteryOrbDwellStartTime: true,
-      // Star tracking - load balance, calculate threshold from current score
-      stars: savedStars,
-      starsEarnedThisGame: 0,
-      lastStarThreshold: (progress.score ~/ StarConfig.pointsPerStar) * StarConfig.pointsPerStar,
+      // Star tracking - start with 2 + any earned from saved score, set threshold correctly
+      stars: StarConfig.startingStars + alreadyEarnedStars,
+      starsEarnedThisGame: alreadyEarnedStars,
+      lastStarThreshold: lastThreshold,
       showStarEarnedAnimation: false,
       starsEarnedThisRound: 0,
     ));
   }
 
   /// Start Alpha Quest game - go to spinning wheel (fresh start)
-  void startGame() async {
+  void startGame() {
     // Clear any saved progress when starting fresh
     StorageService.instance.clearGameProgress();
-
-    // Load saved stars (persisted across games)
-    final savedStars = await StorageService.instance.loadStars();
 
     _initializeLetters();
     emit(state.copyWith(
@@ -141,8 +141,8 @@ class GameCubit extends Cubit<GameState> {
       // Reset cheat code and hint tracking
       skipCheatUsedThisRound: false,
       clearUsedHintWords: true,
-      // Star tracking - preserve balance, reset per-game tracking
-      stars: savedStars,
+      // Star tracking - ALWAYS start fresh with 2 stars (no persistence across games)
+      stars: StarConfig.startingStars,
       starsEarnedThisGame: 0,
       lastStarThreshold: 0,
       showStarEarnedAnimation: false,
@@ -1855,11 +1855,6 @@ class GameCubit extends Cubit<GameState> {
           : state.lastStarThreshold,
       showStarEarnedAnimation: starsEarnedThisRound > 0,
     ));
-
-    // Save star balance if earned any
-    if (starsEarnedThisRound > 0) {
-      _saveStars();
-    }
   }
 
   /// Calculate how many new stars were earned based on score crossing thresholds
@@ -1991,11 +1986,8 @@ class GameCubit extends Cubit<GameState> {
   }
 
   /// Reset the game to initial state
-  void resetGame() async {
+  void resetGame() {
     _timer?.cancel();
-
-    // Load saved stars (persisted across games)
-    final savedStars = await StorageService.instance.loadStars();
 
     _initializeLetters();
     emit(state.copyWith(
@@ -2027,8 +2019,8 @@ class GameCubit extends Cubit<GameState> {
       // Reset cheat code and hint tracking
       skipCheatUsedThisRound: false,
       clearUsedHintWords: true,
-      // Star tracking - preserve balance, reset per-game tracking
-      stars: savedStars,
+      // Star tracking - ALWAYS start fresh with 2 stars (no persistence across games)
+      stars: StarConfig.startingStars,
       starsEarnedThisGame: 0,
       lastStarThreshold: 0,
       showStarEarnedAnimation: false,
@@ -2149,7 +2141,6 @@ class GameCubit extends Cubit<GameState> {
       emit(state.copyWith(
         stars: state.stars - StarConfig.skipCategoryCost,
       ));
-      _saveStars();
       _completeLetterRound(state.score, state.completedWords);
     } else {
       // Move to next category
@@ -2171,7 +2162,6 @@ class GameCubit extends Cubit<GameState> {
         approachingLetterIds: [],
         clearHintWord: true,
       ));
-      _saveStars();
     }
 
     return true;
@@ -2202,21 +2192,9 @@ class GameCubit extends Cubit<GameState> {
       clearLastAnswerCorrect: true,
     ));
 
-    _saveStars();
     _startTimer();
 
     return true;
-  }
-
-  /// Load saved stars from storage
-  Future<void> loadSavedStars() async {
-    final savedStars = await StorageService.instance.loadStars();
-    emit(state.copyWith(stars: savedStars));
-  }
-
-  /// Save current star balance to storage
-  Future<void> _saveStars() async {
-    await StorageService.instance.saveStars(state.stars);
   }
 
   // ============================================
