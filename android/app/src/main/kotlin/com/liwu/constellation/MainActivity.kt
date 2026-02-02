@@ -1,4 +1,4 @@
-package com.example.constellation_app
+package com.liwu.constellation
 
 import io.flutter.embedding.android.FlutterActivity
 
