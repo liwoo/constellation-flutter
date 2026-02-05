@@ -70,12 +70,10 @@ class GameCubit extends Cubit<GameState> {
       return;
     }
 
-    _initializeLetters();
+    // Track game resume
+    AnalyticsService.instance.logGameStart(isNewGame: false);
 
-    // Calculate how many stars should have already been earned based on saved score
-    // This ensures we don't double-award stars for points already scored
-    final alreadyEarnedStars = progress.score ~/ StarConfig.pointsPerStar;
-    final lastThreshold = alreadyEarnedStars * StarConfig.pointsPerStar;
+    _initializeLetters();
 
     emit(state.copyWith(
       timeRemaining: progress.timeRemaining,
@@ -100,10 +98,10 @@ class GameCubit extends Cubit<GameState> {
       clearLastMysteryOutcome: true,
       clearPendingMysteryOrb: true,
       clearMysteryOrbDwellStartTime: true,
-      // Star tracking - start with 2 + any earned from saved score, set threshold correctly
-      stars: StarConfig.startingStars + alreadyEarnedStars,
-      starsEarnedThisGame: alreadyEarnedStars,
-      lastStarThreshold: lastThreshold,
+      // Star tracking - restore saved star state (includes spent stars)
+      stars: progress.stars,
+      starsEarnedThisGame: progress.starsEarnedThisGame,
+      lastStarThreshold: progress.lastStarThreshold,
       showStarEarnedAnimation: false,
       starsEarnedThisRound: 0,
     ));
@@ -113,6 +111,9 @@ class GameCubit extends Cubit<GameState> {
   void startGame() {
     // Clear any saved progress when starting fresh
     StorageService.instance.clearGameProgress();
+
+    // Track game start
+    AnalyticsService.instance.logGameStart(isNewGame: true);
 
     _initializeLetters();
     emit(state.copyWith(
@@ -164,6 +165,9 @@ class GameCubit extends Cubit<GameState> {
       score: score,
       timeRemaining: timeRemaining,
       hintsRemaining: hintsRemaining,
+      stars: state.stars,
+      lastStarThreshold: state.lastStarThreshold,
+      starsEarnedThisGame: state.starsEarnedThisGame,
     );
   }
 
@@ -189,6 +193,14 @@ class GameCubit extends Cubit<GameState> {
 
     // Get 5 random categories that have words for this letter
     final categories = _get5RandomCategoriesForLetter(upperLetter);
+
+    // Track letter started
+    AnalyticsService.instance.logLetterStarted(
+      letter: upperLetter,
+      letterRound: state.letterRound,
+      timeRemaining: state.timeRemaining,
+      currentScore: state.score,
+    );
 
     emit(state.copyWith(
       currentLetter: upperLetter,
@@ -1009,6 +1021,13 @@ class GameCubit extends Cubit<GameState> {
 
   /// Apply mystery outcome effects (without updating orb list - already done)
   void _applyMysteryOutcomeEffects(MysteryOutcome outcome) {
+    // Track mystery orb activation
+    AnalyticsService.instance.logMysteryOrbActivated(
+      outcome: outcome.name,
+      isReward: _isRewardOutcome(outcome),
+      letterRound: state.letterRound,
+    );
+
     switch (outcome) {
       case MysteryOutcome.timeBonus:
         // Time bonus from mystery orb
@@ -1212,6 +1231,11 @@ class GameCubit extends Cubit<GameState> {
   void insertSpace() {
     if (state.selectedLetterIds.isEmpty) return;
 
+    // Track space usage
+    AnalyticsService.instance.logSpaceUsed(
+      usageCount: state.spaceUsageCount + 1,
+    );
+
     // Commit current selection + space, then clear selection for fresh drag
     final newCommitted = state.committedWord + state.currentSelection + ' ';
     emit(state.copyWith(
@@ -1228,6 +1252,11 @@ class GameCubit extends Cubit<GameState> {
     final lastId = state.selectedLetterIds.last;
     // Don't repeat spaces
     if (lastId == GameState.spaceId) return;
+
+    // Track repeat usage
+    AnalyticsService.instance.logRepeatUsed(
+      usageCount: state.repeatUsageCount + 1,
+    );
 
     final newSelection = [...state.selectedLetterIds, lastId];
     emit(state.copyWith(
@@ -1246,6 +1275,12 @@ class GameCubit extends Cubit<GameState> {
     if (state.skipCheatUsedThisRound) return false;
     // Need a current letter/category to skip
     if (state.currentLetter == null) return false;
+
+    // Track cheat usage
+    AnalyticsService.instance.logCheatUsed(
+      cheatType: 'shake_skip',
+      letterRound: state.letterRound,
+    );
 
     // Play feedback
     AudioService.instance.play(GameSound.wordCorrect);
@@ -1356,6 +1391,14 @@ class GameCubit extends Cubit<GameState> {
 
     // Haptic feedback for hint
     HapticService.instance.medium();
+
+    // Track hint usage
+    AnalyticsService.instance.logHintUsed(
+      hintWord: hintWord,
+      hintsRemaining: state.hintsRemaining - 1,
+      category: state.category,
+      letterRound: state.letterRound,
+    );
 
     // Deduct 10 seconds for using a hint
     final newTime = state.timeRemaining - _hintTimeCost;
@@ -1732,6 +1775,28 @@ class GameCubit extends Cubit<GameState> {
     final newWords = [...state.completedWords, word];
     final nextCategoryIndex = state.categoryIndex + 1;
 
+    // Track word submission
+    final hasMysteryOrb = state.selectedLetterIds.any((id) => id >= 100);
+    AnalyticsService.instance.logWordSubmitted(
+      isCorrect: true,
+      word: word,
+      category: state.category,
+      wordLength: word.length,
+      usedSpace: state.spaceUsageCount > 0,
+      usedRepeat: state.repeatUsageCount > 0,
+      usedMysteryOrb: hasMysteryOrb,
+      isPureConnection: state.isPureConnection,
+    );
+
+    // Track category completion
+    AnalyticsService.instance.logCategoryCompleted(
+      category: state.category,
+      letter: state.currentLetter ?? '',
+      categoryIndex: state.categoryIndex,
+      word: word,
+      pointsEarned: wordScore,
+    );
+
     // Note: Star earning is now checked at end of letter round for dramatic reveal
 
     // Time bonus for space usage
@@ -1741,6 +1806,12 @@ class GameCubit extends Cubit<GameState> {
     final wasPureConnection = state.isPureConnection;
     if (wasPureConnection) {
       timeBonus += TimeConfig.pureConnectionBonus;
+      // Track pure connection achievement
+      AnalyticsService.instance.logPureConnection(
+        word: word,
+        wordLength: word.length,
+        bonusTime: TimeConfig.pureConnectionBonus,
+      );
     }
 
     final newTime = state.timeRemaining + timeBonus;
@@ -1813,9 +1884,18 @@ class GameCubit extends Cubit<GameState> {
   void _completeLetterRound(int newScore, List<String> newWords) {
     final newCompletedLetters = [...state.completedLetters, state.currentLetter!];
 
+    // Track letter completion
+    AnalyticsService.instance.logLetterCompleted(
+      letter: state.currentLetter!,
+      letterRound: state.letterRound,
+      pointsEarned: state.pointsEarnedInRound,
+      timeRemaining: state.timeRemaining,
+      totalScore: newScore,
+    );
+
     // Check if all letters completed (A-Y, no X)
     if (newCompletedLetters.length >= GameConfig.totalLetters) {
-      _endGame(isWinner: true, finalScore: newScore);
+      _showVictorySequence(newScore, newWords, newCompletedLetters);
       return;
     }
 
@@ -1824,6 +1904,14 @@ class GameCubit extends Cubit<GameState> {
 
     // Check if player earned any stars this round (every 300 points)
     final starsEarnedThisRound = _calculateStarsEarnedThisRound(newScore);
+
+    // Track star earned if applicable
+    if (starsEarnedThisRound > 0) {
+      AnalyticsService.instance.logStarEarned(
+        totalStars: state.stars + starsEarnedThisRound,
+        scoreThreshold: (newScore ~/ StarConfig.pointsPerStar) * StarConfig.pointsPerStar,
+      );
+    }
 
     // Play round complete celebration
     AudioService.instance.play(GameSound.roundComplete);
@@ -1901,6 +1989,26 @@ class GameCubit extends Cubit<GameState> {
       hintsRemaining: state.hintsRemaining,
     );
 
+    // Check if this is the FINAL ROUND (round 25) - show hype sequence!
+    if (nextRound == GameConfig.totalLetters) {
+      // Show final round hype animation before proceeding
+      emit(state.copyWith(
+        letterRound: nextRound,
+        timeRemaining: newTime,
+        clearLastAnswerCorrect: true,
+        phase: GamePhase.finalRoundHype,
+        clearCurrentLetter: true,
+        currentCategories: [],
+        categoryIndex: 0,
+        isPlaying: false,
+        skipCheatUsedThisRound: false,
+        clearUsedHintWords: true,
+        starsEarnedThisRound: 0,
+        showStarEarnedAnimation: false,
+      ));
+      return;
+    }
+
     // Move to next letter round - timer stays paused until wheel lands
     emit(state.copyWith(
       letterRound: nextRound,
@@ -1919,12 +2027,86 @@ class GameCubit extends Cubit<GameState> {
     // Note: Timer will start in onWheelLanded()
   }
 
+  /// Proceed from final round hype to the spinning wheel
+  /// Called when user taps to continue after the hype animation
+  void proceedToFinalRound() {
+    // Track final round reached
+    AnalyticsService.instance.logFinalRoundReached(
+      score: state.score,
+      timeRemaining: state.timeRemaining,
+      starsEarned: state.starsEarnedThisGame,
+    );
+
+    emit(state.copyWith(
+      phase: GamePhase.spinningWheel,
+    ));
+  }
+
+  /// Show the victory sequence after completing all letters
+  void _showVictorySequence(int finalScore, List<String> newWords, List<String> completedLetters) {
+    _timer?.cancel();
+
+    // Check if player earned any stars this round
+    final starsEarnedThisRound = _calculateStarsEarnedThisRound(finalScore);
+
+    // Play victory sound
+    AudioService.instance.play(GameSound.gameWin);
+    HapticService.instance.success();
+
+    // Clear saved progress - game is complete
+    StorageService.instance.clearGameProgress();
+
+    // Save game session
+    _saveGameSession(finalScore, true);
+
+    // Show victory sequence
+    emit(state.copyWith(
+      score: finalScore,
+      completedWords: newWords,
+      completedLetters: completedLetters,
+      selectedLetterIds: [],
+      committedWord: '',
+      lastAnswerCorrect: true,
+      phase: GamePhase.victorySequence,
+      isPlaying: false,
+      isWinner: true,
+      starsEarnedThisRound: starsEarnedThisRound,
+      stars: state.stars + starsEarnedThisRound,
+      starsEarnedThisGame: state.starsEarnedThisGame + starsEarnedThisRound,
+      lastStarThreshold: starsEarnedThisRound > 0
+          ? ((finalScore ~/ StarConfig.pointsPerStar) * StarConfig.pointsPerStar)
+          : state.lastStarThreshold,
+      showStarEarnedAnimation: starsEarnedThisRound > 0,
+    ));
+  }
+
+  /// Proceed from victory sequence to game over screen
+  /// Called when user taps after the victory celebration
+  void proceedToGameOver() {
+    emit(state.copyWith(
+      phase: GamePhase.gameOver,
+    ));
+  }
+
   /// Handle wrong answer - deduct time, keep same category
   /// Preserves banked words (committedWord) so only the current selection is lost
   void _handleWrongAnswer() {
     // Audio and haptic feedback for wrong answer
     AudioService.instance.play(GameSound.wordWrong);
     HapticService.instance.error();
+
+    // Track incorrect word submission
+    final hasMysteryOrb = state.selectedLetterIds.any((id) => id >= 100);
+    AnalyticsService.instance.logWordSubmitted(
+      isCorrect: false,
+      word: state.currentWord,
+      category: state.category,
+      wordLength: state.currentWord.length,
+      usedSpace: state.spaceUsageCount > 0,
+      usedRepeat: state.repeatUsageCount > 0,
+      usedMysteryOrb: hasMysteryOrb,
+      isPureConnection: state.isPureConnection,
+    );
 
     // Deduct time penalty for wrong answer
     final newTime = (state.timeRemaining - TimeConfig.wrongAnswerPenalty).clamp(0, 999);
@@ -1950,6 +2132,15 @@ class GameCubit extends Cubit<GameState> {
     _timer?.cancel();
 
     final score = finalScore ?? state.score;
+
+    // Track game completion
+    AnalyticsService.instance.logGameComplete(
+      isWinner: isWinner,
+      finalScore: score,
+      lettersCompleted: state.completedLetters.length,
+      totalTimePlayedSeconds: GameConfig.startingTime - state.timeRemaining,
+      starsEarned: state.starsEarnedThisGame,
+    );
 
     // Audio and haptic feedback for game end
     if (isWinner) {
@@ -2129,6 +2320,14 @@ class GameCubit extends Cubit<GameState> {
     // Need a current letter/category to skip
     if (state.currentLetter == null) return false;
 
+    // Track skip usage
+    AnalyticsService.instance.logSkipUsed(
+      category: state.category,
+      starCost: StarConfig.skipCategoryCost,
+      starsRemaining: state.stars - StarConfig.skipCategoryCost,
+      letterRound: state.letterRound,
+    );
+
     // Play feedback
     AudioService.instance.play(GameSound.wordCorrect);
     HapticService.instance.success();
@@ -2176,6 +2375,14 @@ class GameCubit extends Cubit<GameState> {
     if (state.isWinner) return false;
     // Need at least 3 stars
     if (state.stars < StarConfig.continueCost) return false;
+
+    // Track continue usage
+    AnalyticsService.instance.logContinueUsed(
+      starCost: StarConfig.continueCost,
+      starsRemaining: state.stars - StarConfig.continueCost,
+      letterRound: state.letterRound,
+      score: state.score,
+    );
 
     // Play feedback
     AudioService.instance.play(GameSound.roundComplete);

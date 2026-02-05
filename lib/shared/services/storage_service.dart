@@ -10,6 +10,9 @@ class SavedGameProgress {
   final int score;
   final int timeRemaining;
   final int hintsRemaining;
+  final int stars;
+  final int lastStarThreshold;
+  final int starsEarnedThisGame;
   final DateTime savedAt;
 
   const SavedGameProgress({
@@ -18,6 +21,9 @@ class SavedGameProgress {
     required this.score,
     required this.timeRemaining,
     required this.hintsRemaining,
+    required this.stars,
+    required this.lastStarThreshold,
+    required this.starsEarnedThisGame,
     required this.savedAt,
   });
 
@@ -27,16 +33,27 @@ class SavedGameProgress {
         'score': score,
         'timeRemaining': timeRemaining,
         'hintsRemaining': hintsRemaining,
+        'stars': stars,
+        'lastStarThreshold': lastStarThreshold,
+        'starsEarnedThisGame': starsEarnedThisGame,
         'savedAt': savedAt.toIso8601String(),
       };
 
   factory SavedGameProgress.fromJson(Map<String, dynamic> json) {
+    // Backward compatibility: calculate stars from score if not saved
+    final score = json['score'] as int;
+    final defaultEarnedStars = score ~/ 300;
+    final defaultThreshold = defaultEarnedStars * 300;
+
     return SavedGameProgress(
       letterRound: json['letterRound'] as int,
       completedLetters: List<String>.from(json['completedLetters'] as List),
-      score: json['score'] as int,
+      score: score,
       timeRemaining: json['timeRemaining'] as int,
       hintsRemaining: json['hintsRemaining'] as int,
+      stars: json['stars'] as int? ?? (2 + defaultEarnedStars),
+      lastStarThreshold: json['lastStarThreshold'] as int? ?? defaultThreshold,
+      starsEarnedThisGame: json['starsEarnedThisGame'] as int? ?? defaultEarnedStars,
       savedAt: DateTime.parse(json['savedAt'] as String),
     );
   }
@@ -166,6 +183,9 @@ class StorageService {
     required int score,
     required int timeRemaining,
     required int hintsRemaining,
+    required int stars,
+    required int lastStarThreshold,
+    required int starsEarnedThisGame,
   }) async {
     await init();
 
@@ -175,6 +195,9 @@ class StorageService {
       score: score,
       timeRemaining: timeRemaining,
       hintsRemaining: hintsRemaining,
+      stars: stars,
+      lastStarThreshold: lastStarThreshold,
+      starsEarnedThisGame: starsEarnedThisGame,
       savedAt: DateTime.now(),
     );
 

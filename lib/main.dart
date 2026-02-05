@@ -1,3 +1,4 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:constellation_app/app/router.dart';
 import 'package:constellation_app/shared/services/services.dart';
@@ -6,7 +7,11 @@ import 'package:constellation_app/shared/theme/theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Initialize Firebase
+  await Firebase.initializeApp();
+
   // Initialize services
+  await AnalyticsService.instance.init();
   await AudioService.instance.init();
   await AudioService.instance.preloadSounds();
   await HapticService.instance.init();

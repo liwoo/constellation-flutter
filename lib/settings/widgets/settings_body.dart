@@ -9,7 +9,7 @@ import 'package:constellation_app/shared/theme/theme.dart';
 /// {@template settings_body}
 /// Body of the SettingsPage.
 ///
-/// Settings screen with sound, haptics toggles and timer duration selector
+/// Settings screen with sound and haptics toggles.
 /// {@endtemplate}
 class SettingsBody extends StatefulWidget {
   /// {@macro settings_body}
@@ -20,8 +20,6 @@ class SettingsBody extends StatefulWidget {
 }
 
 class _SettingsBodyState extends State<SettingsBody> {
-  int _selectedTimer = AppConstants.timerMedium;
-
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<SettingsCubit, SettingsState>(
@@ -121,42 +119,6 @@ class _SettingsBodyState extends State<SettingsBody> {
 
                               const SizedBox(height: AppSpacing.xxl),
 
-                              // Timer duration section
-                              Text(
-                                'TIMER DURATION',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleLarge
-                                    ?.copyWith(
-                                      color: AppColors.white,
-                                      fontWeight: FontWeight.bold,
-                                      letterSpacing: 1.2,
-                                    ),
-                              ),
-
-                              const SizedBox(height: AppSpacing.md),
-
-                              // Timer options
-                              ...AppConstants.availableTimers.map(
-                                (timer) => Padding(
-                                  padding: const EdgeInsets.only(
-                                    bottom: AppSpacing.sm,
-                                  ),
-                                  child: _buildTimerOption(
-                                    context: context,
-                                    duration: timer,
-                                    isSelected: _selectedTimer == timer,
-                                    onTap: () {
-                                      setState(() {
-                                        _selectedTimer = timer;
-                                      });
-                                    },
-                                  ),
-                                ),
-                              ),
-
-                              const SizedBox(height: AppSpacing.xxl),
-
                               // Back button
                               GameButton(
                                 text: 'BACK TO MENU',
@@ -240,59 +202,4 @@ class _SettingsBodyState extends State<SettingsBody> {
     );
   }
 
-  Widget _buildTimerOption({
-    required BuildContext context,
-    required int duration,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    final minutes = duration ~/ 60;
-    final seconds = duration % 60;
-    final displayText = seconds > 0 ? '$minutes:${seconds}0' : '$minutes:00';
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? AppColors.accentGold.withValues(alpha: 0.2)
-              : AppColors.white.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(AppBorderRadius.md),
-          border: Border.all(
-            color: isSelected
-                ? AppColors.accentGold
-                : AppColors.white.withValues(alpha: 0.2),
-            width: isSelected ? 2 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              Icons.timer,
-              color: isSelected ? AppColors.accentGold : AppColors.white,
-              size: 24,
-            ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: Text(
-                displayText,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: isSelected ? AppColors.accentGold : AppColors.white,
-                      fontWeight:
-                          isSelected ? FontWeight.bold : FontWeight.normal,
-                    ),
-              ),
-            ),
-            if (isSelected)
-              Icon(
-                Icons.check_circle,
-                color: AppColors.accentGold,
-                size: 24,
-              ),
-          ],
-        ),
-      ),
-    );
-  }
 }

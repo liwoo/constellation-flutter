@@ -79,6 +79,10 @@ enum GamePhase {
   playingRound,
   /// Letter round complete - celebration screen
   letterComplete,
+  /// Final round hype - dramatic buildup before round 25
+  finalRoundHype,
+  /// Victory sequence - epic celebration after winning
+  victorySequence,
   /// Game over - win or lose
   gameOver,
 }

@@ -63,37 +63,25 @@ class MainMenuBody extends StatelessWidget {
               SafeArea(
                 child: Column(
                   children: [
-                    // Top bar with sound toggle
+                    // Top bar with info button
                     Padding(
                       padding: const EdgeInsets.symmetric(
                         horizontal: AppSpacing.md,
                         vertical: AppSpacing.sm,
                       ),
                       child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        mainAxisAlignment: MainAxisAlignment.start,
                         children: [
                           // Info button
                           _IconButton(
                             icon: Icons.info_outline,
                             onPressed: () => _showAboutDialog(context),
                           ),
-                          // Sound toggle
-                          _SoundToggleButton(
-                            isEnabled: state.soundEnabled,
-                            onPressed: () {
-                              context.read<MainMenuCubit>().toggleSound();
-                            },
-                          ),
                         ],
                       ),
                     ),
 
                     const Spacer(flex: 2),
-
-                    // Player Avatar
-                    _PlayerAvatar(playerName: state.playerName),
-
-                    const SizedBox(height: AppSpacing.lg),
 
                     // Game Title
                     Text(
@@ -137,11 +125,6 @@ class MainMenuBody extends StatelessWidget {
                     ),
 
                     const Spacer(flex: 1),
-
-                    // Star balance display
-                    _StarBalanceDisplay(stars: state.stars),
-
-                    const SizedBox(height: AppSpacing.lg),
 
                     // Menu buttons - all same width
                     Column(
@@ -522,113 +505,6 @@ class _IconButton extends StatelessWidget {
   }
 }
 
-/// Sound toggle button with glow effect
-class _SoundToggleButton extends StatelessWidget {
-  const _SoundToggleButton({
-    required this.isEnabled,
-    required this.onPressed,
-  });
-
-  final bool isEnabled;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onPressed,
-      child: Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              AppColors.primaryPurple.withAlpha(179),
-              AppColors.primaryDarkPurple.withAlpha(179),
-            ],
-          ),
-          border: Border.all(
-            color: isEnabled
-                ? AppColors.accentGold.withAlpha(179)
-                : AppColors.greyMedium.withAlpha(128),
-            width: 2,
-          ),
-          boxShadow: isEnabled
-              ? [
-                  BoxShadow(
-                    color: AppColors.accentGold.withAlpha(77),
-                    blurRadius: 8,
-                    spreadRadius: 1,
-                  ),
-                ]
-              : null,
-        ),
-        child: Icon(
-          isEnabled ? Icons.volume_up : Icons.volume_off,
-          color: isEnabled ? AppColors.accentGold : AppColors.greyMedium,
-          size: 24,
-        ),
-      ),
-    );
-  }
-}
-
-/// Player avatar with decorative ring
-class _PlayerAvatar extends StatelessWidget {
-  const _PlayerAvatar({required this.playerName});
-
-  final String playerName;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          width: 100,
-          height: 100,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                AppColors.accentPink.withAlpha(230),
-                AppColors.primaryPurple.withAlpha(230),
-              ],
-            ),
-            border: Border.all(
-              color: AppColors.accentPink,
-              width: 3,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.accentPink.withAlpha(77),
-                blurRadius: 15,
-                spreadRadius: 2,
-              ),
-            ],
-          ),
-          child: const Icon(
-            Icons.person,
-            color: AppColors.white,
-            size: 50,
-          ),
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        Text(
-          playerName,
-          style: GoogleFonts.exo2(
-            color: AppColors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
-    );
-  }
-}
 
 /// Stats display showing high score and games played
 class _StatsDisplay extends StatelessWidget {
@@ -913,85 +789,3 @@ class _ConstellationPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-/// Star balance display showing actual star count
-class _StarBalanceDisplay extends StatelessWidget {
-  const _StarBalanceDisplay({required this.stars});
-
-  final int stars;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.lg,
-        vertical: AppSpacing.sm,
-      ),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppColors.accentGold.withAlpha(30),
-            AppColors.accentOrange.withAlpha(30),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: AppColors.accentGold.withAlpha(100),
-          width: 1.5,
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Star icon with glow
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  AppColors.accentGold,
-                  AppColors.accentOrange,
-                ],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.accentGold.withAlpha(100),
-                  blurRadius: 8,
-                  spreadRadius: 2,
-                ),
-              ],
-            ),
-            child: const Icon(
-              Icons.star,
-              color: Colors.white,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          // Star count
-          Text(
-            '$stars',
-            style: GoogleFonts.orbitron(
-              color: AppColors.accentGold,
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(width: AppSpacing.xs),
-          Text(
-            'STARS',
-            style: GoogleFonts.exo2(
-              color: AppColors.accentGold.withAlpha(180),
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 1,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}

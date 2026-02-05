@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -457,6 +460,10 @@ class _GameBodyState extends State<GameBody>
         return _buildPlayingScreen(context, state);
       case GamePhase.letterComplete:
         return _buildLetterCompleteScreen(context, state);
+      case GamePhase.finalRoundHype:
+        return _buildFinalRoundHypeScreen(context, state);
+      case GamePhase.victorySequence:
+        return _buildVictorySequenceScreen(context, state);
       case GamePhase.gameOver:
         return _buildPlayingScreen(context, state); // Show behind overlay
     }
@@ -575,7 +582,7 @@ class _GameBodyState extends State<GameBody>
               const SizedBox(height: 16),
               // Cancel button
               GestureDetector(
-                onTap: () => Navigator.of(context).pop(),
+                onTap: () => context.go('/'),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 48,
@@ -945,6 +952,22 @@ class _GameBodyState extends State<GameBody>
           ],
         );
       },
+    );
+  }
+
+  /// Final round hype screen - dramatic buildup before round 25
+  Widget _buildFinalRoundHypeScreen(BuildContext context, GameState state) {
+    return _FinalRoundHypeAnimation(
+      onComplete: () => context.read<GameCubit>().proceedToFinalRound(),
+    );
+  }
+
+  /// Victory sequence screen - epic celebration after winning
+  Widget _buildVictorySequenceScreen(BuildContext context, GameState state) {
+    return _VictorySequenceAnimation(
+      score: state.score,
+      starsEarned: state.starsEarnedThisGame,
+      onComplete: () => context.read<GameCubit>().proceedToGameOver(),
     );
   }
 
@@ -2149,5 +2172,747 @@ class _GameBodyState extends State<GameBody>
         return const SizedBox.shrink();
       },
     );
+  }
+}
+
+/// Final Round Hype Animation - dramatic buildup before round 25
+class _FinalRoundHypeAnimation extends StatefulWidget {
+  const _FinalRoundHypeAnimation({required this.onComplete});
+
+  final VoidCallback onComplete;
+
+  @override
+  State<_FinalRoundHypeAnimation> createState() => _FinalRoundHypeAnimationState();
+}
+
+class _FinalRoundHypeAnimationState extends State<_FinalRoundHypeAnimation>
+    with TickerProviderStateMixin {
+  late AnimationController _mainController;
+  late AnimationController _pulseController;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _glowAnimation;
+  late Animation<double> _textOpacity;
+
+  int _countdownValue = 3;
+  bool _showFinalRound = false;
+  bool _canProceed = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _mainController = AnimationController(
+      duration: const Duration(milliseconds: 4500),
+      vsync: this,
+    );
+
+    _pulseController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    )..repeat(reverse: true);
+
+    _scaleAnimation = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0.5, end: 1.2), weight: 20),
+      TweenSequenceItem(tween: Tween(begin: 1.2, end: 1.0), weight: 10),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.0), weight: 70),
+    ]).animate(CurvedAnimation(parent: _mainController, curve: Curves.easeOut));
+
+    _glowAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _mainController, curve: Curves.easeIn),
+    );
+
+    _textOpacity = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0), weight: 15),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.0), weight: 85),
+    ]).animate(_mainController);
+
+    _startSequence();
+  }
+
+  void _startSequence() async {
+    // Play hype sound
+    HapticService.instance.medium();
+
+    // Countdown 3-2-1
+    for (int i = 3; i >= 1; i--) {
+      if (!mounted) return;
+      setState(() => _countdownValue = i);
+      HapticService.instance.light();
+      await Future.delayed(const Duration(milliseconds: 700));
+    }
+
+    if (!mounted) return;
+
+    // Show "FINAL ROUND"
+    setState(() => _showFinalRound = true);
+    _mainController.forward();
+    HapticService.instance.success();
+    AudioService.instance.play(GameSound.roundComplete);
+
+    // Enable proceed after animation
+    await Future.delayed(const Duration(milliseconds: 2000));
+    if (!mounted) return;
+    setState(() => _canProceed = true);
+  }
+
+  @override
+  void dispose() {
+    _mainController.dispose();
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: _canProceed ? widget.onComplete : null,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          gradient: RadialGradient(
+            center: Alignment.center,
+            radius: 1.5,
+            colors: [
+              AppColors.primaryPurple,
+              AppColors.primaryDarkPurple,
+              AppColors.black,
+            ],
+            stops: const [0.0, 0.5, 1.0],
+          ),
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // Animated glow rings
+            if (_showFinalRound)
+              AnimatedBuilder(
+                animation: _pulseController,
+                builder: (context, child) {
+                  return Container(
+                    width: 300 + (_pulseController.value * 50),
+                    height: 300 + (_pulseController.value * 50),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: AppColors.accentGold.withAlpha(
+                          (100 * (1 - _pulseController.value)).toInt(),
+                        ),
+                        width: 3,
+                      ),
+                    ),
+                  );
+                },
+              ),
+
+            // Main content
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Countdown or Final Round text
+                if (!_showFinalRound) ...[
+                  // Countdown number
+                  TweenAnimationBuilder<double>(
+                    key: ValueKey(_countdownValue),
+                    tween: Tween(begin: 2.0, end: 1.0),
+                    duration: const Duration(milliseconds: 500),
+                    curve: Curves.elasticOut,
+                    builder: (context, scale, child) {
+                      return Transform.scale(
+                        scale: scale,
+                        child: Text(
+                          '$_countdownValue',
+                          style: GoogleFonts.orbitron(
+                            color: AppColors.accentGold,
+                            fontSize: 120,
+                            fontWeight: FontWeight.bold,
+                            shadows: [
+                              Shadow(
+                                color: AppColors.accentGold.withAlpha(150),
+                                blurRadius: 30,
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ] else ...[
+                  // "FINAL ROUND" reveal
+                  AnimatedBuilder(
+                    animation: _mainController,
+                    builder: (context, child) {
+                      return Transform.scale(
+                        scale: _scaleAnimation.value,
+                        child: Opacity(
+                          opacity: _textOpacity.value,
+                          child: Column(
+                            children: [
+                              // Crown icon
+                              Container(
+                                width: 80,
+                                height: 80,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      AppColors.accentGold,
+                                      AppColors.accentOrange,
+                                    ],
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: AppColors.accentGold.withAlpha(
+                                        (200 * _glowAnimation.value).toInt(),
+                                      ),
+                                      blurRadius: 40,
+                                      spreadRadius: 15,
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(
+                                  Icons.emoji_events,
+                                  color: Colors.white,
+                                  size: 45,
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+                              // "FINAL" text
+                              Text(
+                                'FINAL',
+                                style: GoogleFonts.orbitron(
+                                  color: Colors.white,
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.w500,
+                                  letterSpacing: 8,
+                                ),
+                              ),
+                              // "ROUND" text with glow
+                              Text(
+                                'ROUND',
+                                style: GoogleFonts.orbitron(
+                                  color: AppColors.accentGold,
+                                  fontSize: 56,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 6,
+                                  shadows: [
+                                    Shadow(
+                                      color: AppColors.accentGold.withAlpha(200),
+                                      blurRadius: 20,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              // Subtitle
+                              Text(
+                                'Complete this to become an Alpha Master!',
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.exo2(
+                                  color: Colors.white.withAlpha(200),
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+
+                const SizedBox(height: 60),
+
+                // "Tap to continue" prompt
+                if (_canProceed)
+                  TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    duration: const Duration(milliseconds: 500),
+                    builder: (context, opacity, child) {
+                      return Opacity(
+                        opacity: opacity,
+                        child: AnimatedBuilder(
+                          animation: _pulseController,
+                          builder: (context, child) {
+                            return Opacity(
+                              opacity: 0.5 + (_pulseController.value * 0.5),
+                              child: Text(
+                                'TAP TO BEGIN',
+                                style: GoogleFonts.exo2(
+                                  color: AppColors.accentGold,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 4,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      );
+                    },
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Victory Sequence Animation - epic celebration after winning
+class _VictorySequenceAnimation extends StatefulWidget {
+  const _VictorySequenceAnimation({
+    required this.score,
+    required this.starsEarned,
+    required this.onComplete,
+  });
+
+  final int score;
+  final int starsEarned;
+  final VoidCallback onComplete;
+
+  @override
+  State<_VictorySequenceAnimation> createState() => _VictorySequenceAnimationState();
+}
+
+class _VictorySequenceAnimationState extends State<_VictorySequenceAnimation>
+    with TickerProviderStateMixin {
+  late AnimationController _mainController;
+  late AnimationController _starBurstController;
+  late AnimationController _shimmerController;
+
+  int _phase = 0; // 0: title, 1: score, 2: stars, 3: complete
+  bool _canProceed = false;
+  int _displayedScore = 0;
+  Timer? _scoreTimer;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _mainController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    );
+
+    _starBurstController = AnimationController(
+      duration: const Duration(milliseconds: 2000),
+      vsync: this,
+    );
+
+    _shimmerController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    )..repeat();
+
+    _startSequence();
+  }
+
+  void _startSequence() async {
+    // Phase 0: Title reveal
+    await Future.delayed(const Duration(milliseconds: 300));
+    if (!mounted) return;
+
+    HapticService.instance.success();
+    _mainController.forward();
+
+    // Phase 1: Score reveal after title
+    await Future.delayed(const Duration(milliseconds: 1800));
+    if (!mounted) return;
+    setState(() => _phase = 1);
+    HapticService.instance.medium();
+
+    // Animate score counting up
+    _animateScoreCounter();
+
+    // Phase 2: Stars reveal
+    await Future.delayed(const Duration(milliseconds: 2500));
+    if (!mounted) return;
+    setState(() => _phase = 2);
+    _starBurstController.forward();
+    HapticService.instance.success();
+
+    // Phase 3: Complete
+    await Future.delayed(const Duration(milliseconds: 2000));
+    if (!mounted) return;
+    setState(() {
+      _phase = 3;
+      _canProceed = true;
+    });
+  }
+
+  void _animateScoreCounter() {
+    const duration = Duration(milliseconds: 2000);
+    const steps = 60;
+    final increment = widget.score / steps;
+    int currentStep = 0;
+
+    _scoreTimer = Timer.periodic(
+      Duration(milliseconds: duration.inMilliseconds ~/ steps),
+      (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        currentStep++;
+        setState(() {
+          _displayedScore = (increment * currentStep).round().clamp(0, widget.score);
+        });
+        if (currentStep >= steps) {
+          timer.cancel();
+          setState(() => _displayedScore = widget.score);
+        }
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _mainController.dispose();
+    _starBurstController.dispose();
+    _shimmerController.dispose();
+    _scoreTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: _canProceed ? widget.onComplete : null,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          gradient: RadialGradient(
+            center: Alignment.center,
+            radius: 1.2,
+            colors: [
+              const Color(0xFF2D1B4E), // Deep purple
+              AppColors.primaryDarkPurple,
+              AppColors.black,
+            ],
+            stops: const [0.0, 0.6, 1.0],
+          ),
+        ),
+        child: Stack(
+          children: [
+            // Particle effects (simple circles)
+            ..._buildParticles(),
+
+            // Main content
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Spacer(flex: 2),
+
+                  // Trophy with glow
+                  AnimatedBuilder(
+                    animation: _mainController,
+                    builder: (context, child) {
+                      final scale = Tween<double>(begin: 0.0, end: 1.0)
+                          .animate(CurvedAnimation(
+                            parent: _mainController,
+                            curve: Curves.elasticOut,
+                          ))
+                          .value;
+
+                      return Transform.scale(
+                        scale: scale,
+                        child: Container(
+                          width: 120,
+                          height: 120,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Color(0xFFFFD700), // Gold
+                                Color(0xFFFFA500), // Orange
+                                Color(0xFFFF8C00), // Dark orange
+                              ],
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.accentGold.withAlpha(180),
+                                blurRadius: 50,
+                                spreadRadius: 20,
+                              ),
+                              BoxShadow(
+                                color: Colors.white.withAlpha(100),
+                                blurRadius: 20,
+                                spreadRadius: 5,
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.emoji_events,
+                            color: Colors.white,
+                            size: 70,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // "ALPHA MASTER" title
+                  AnimatedBuilder(
+                    animation: _mainController,
+                    builder: (context, child) {
+                      return Opacity(
+                        opacity: _mainController.value,
+                        child: Column(
+                          children: [
+                            Text(
+                              'ALPHA',
+                              style: GoogleFonts.orbitron(
+                                color: Colors.white,
+                                fontSize: 28,
+                                fontWeight: FontWeight.w500,
+                                letterSpacing: 10,
+                              ),
+                            ),
+                            // Shimmer effect on "MASTER"
+                            AnimatedBuilder(
+                              animation: _shimmerController,
+                              builder: (context, child) {
+                                return ShaderMask(
+                                  shaderCallback: (bounds) {
+                                    return LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        AppColors.accentGold,
+                                        Colors.white,
+                                        AppColors.accentGold,
+                                      ],
+                                      stops: [
+                                        (_shimmerController.value - 0.3).clamp(0.0, 1.0),
+                                        _shimmerController.value,
+                                        (_shimmerController.value + 0.3).clamp(0.0, 1.0),
+                                      ],
+                                    ).createShader(bounds);
+                                  },
+                                  child: Text(
+                                    'MASTER',
+                                    style: GoogleFonts.orbitron(
+                                      color: Colors.white,
+                                      fontSize: 52,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 6,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  // Subtitle
+                  AnimatedOpacity(
+                    opacity: _phase >= 0 ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 500),
+                    child: Text(
+                      'You conquered all 25 letters!',
+                      style: GoogleFonts.exo2(
+                        color: Colors.white.withAlpha(180),
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 40),
+
+                  // Score section
+                  AnimatedOpacity(
+                    opacity: _phase >= 1 ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 500),
+                    child: AnimatedScale(
+                      scale: _phase >= 1 ? 1.0 : 0.8,
+                      duration: const Duration(milliseconds: 500),
+                      curve: Curves.elasticOut,
+                      child: Column(
+                        children: [
+                          Text(
+                            'FINAL SCORE',
+                            style: GoogleFonts.exo2(
+                              color: AppColors.accentGold.withAlpha(200),
+                              fontSize: 14,
+                              letterSpacing: 3,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '$_displayedScore',
+                            style: GoogleFonts.orbitron(
+                              color: Colors.white,
+                              fontSize: 64,
+                              fontWeight: FontWeight.bold,
+                              shadows: [
+                                Shadow(
+                                  color: AppColors.accentGold.withAlpha(150),
+                                  blurRadius: 15,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 32),
+
+                  // Stars earned section
+                  AnimatedOpacity(
+                    opacity: _phase >= 2 ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 500),
+                    child: AnimatedScale(
+                      scale: _phase >= 2 ? 1.0 : 0.5,
+                      duration: const Duration(milliseconds: 800),
+                      curve: Curves.elasticOut,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              AppColors.accentGold.withAlpha(50),
+                              AppColors.accentOrange.withAlpha(50),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: AppColors.accentGold.withAlpha(150),
+                            width: 2,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.star,
+                              color: AppColors.accentGold,
+                              size: 32,
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              '+${widget.starsEarned} Stars Earned',
+                              style: GoogleFonts.exo2(
+                                color: AppColors.accentGold,
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const Spacer(flex: 1),
+
+                  // Continue prompt
+                  AnimatedOpacity(
+                    opacity: _canProceed ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 500),
+                    child: Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 48,
+                            vertical: 16,
+                          ),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [AppColors.accentGold, AppColors.accentOrange],
+                            ),
+                            borderRadius: BorderRadius.circular(30),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.accentGold.withAlpha(100),
+                                blurRadius: 20,
+                                spreadRadius: 2,
+                              ),
+                            ],
+                          ),
+                          child: Text(
+                            'CONTINUE',
+                            style: GoogleFonts.orbitron(
+                              color: AppColors.black,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const Spacer(flex: 2),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildParticles() {
+    // Generate some simple animated particles
+    final particles = <Widget>[];
+    final random = Random(42);
+
+    for (int i = 0; i < 20; i++) {
+      final startX = random.nextDouble() * 400 - 50;
+      final startY = random.nextDouble() * 800;
+      final size = random.nextDouble() * 6 + 2;
+      final delay = random.nextDouble() * 2;
+
+      particles.add(
+        Positioned(
+          left: startX,
+          top: startY,
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0.0, end: 1.0),
+            duration: Duration(milliseconds: 3000 + (delay * 1000).toInt()),
+            builder: (context, value, child) {
+              return Transform.translate(
+                offset: Offset(0, -100 * value),
+                child: Opacity(
+                  opacity: (1 - value).clamp(0.0, 1.0) * 0.6,
+                  child: Container(
+                    width: size,
+                    height: size,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: i % 2 == 0
+                          ? AppColors.accentGold.withAlpha(200)
+                          : Colors.white.withAlpha(150),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    }
+
+    return particles;
   }
 }
