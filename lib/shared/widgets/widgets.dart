@@ -7,3 +7,5 @@ export 'gradient_background.dart';
 export 'letter_bubble.dart';
 export 'mystery_orb.dart';
 export 'star_decoration.dart';
+export 'attention_pulse.dart';
+export 'mobile_frame.dart';

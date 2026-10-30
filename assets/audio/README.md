@@ -22,7 +22,7 @@ Short, latency-critical sounds are **WAV** (no decoder delay). Longer ones are
 | `bubbles_rise.mp3` | Word won — bubbles fizzing up |
 | `word_correct.mp3` | Word won — whimsical chime layered over the bubbles |
 | `pure_connection.mp3` | Word built in a single drag — harp glissando |
-| `word_wrong.wav` | Wrong word submitted |
+| `word_wrong.wav` | Wrong word submitted — soft wood-on-wood "tok-tok" |
 | `wheel_tick.wav` | Spinning wheel / category reel ratchet |
 | `wheel_land.mp3` | Wheel lands on a letter |
 | `jackpot_reveal.mp3` | Category revealed |
