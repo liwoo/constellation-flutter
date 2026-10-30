@@ -12,19 +12,15 @@ import 'package:constellation_app/shared/services/services.dart';
 part 'game_state.dart';
 
 class GameCubit extends Cubit<GameState> {
-  GameCubit({this.isPractice = false}) : super(const GameInitial()) {
+  GameCubit() : super(const GameInitial()) {
     _initializeLetters();
   }
 
-  /// Practice runs the real game on a scripted letter/category set, without
-  /// saving progress, scores or analytics.
-  final bool isPractice;
-
   Timer? _timer;
   Timer? _hintTimer;
+  Timer? _dwellTimer;
 
-  // Clock held by an overlay (tutorial coach mark, modal) - separate from
-  // the player-facing pause so the two never fight over the timer
+  // Clock held by a blocking modal (e.g. "not enough stars")
   bool _timerHeld = false;
 
   // Stuck detection for the pulsing hint button (reset per category)
@@ -56,9 +52,7 @@ class GameCubit extends Cubit<GameState> {
   static const double _passThroughVelocity = HitDetectionConfig.passThroughVelocity;
 
   // Mystery orb count based on round (from constants)
-  int get _mysteryOrbCount => isPractice
-      ? PracticeConfig.orbCountFor(state.categoryIndex)
-      : MysteryOrbConfig.getOrbCount(state.letterRound);
+  int get _mysteryOrbCount => MysteryOrbConfig.getOrbCount(state.letterRound);
 
   // Mystery outcome probabilities from constants
   static const Map<MysteryOutcome, int> _mysteryOutcomeProbabilities = {
@@ -181,33 +175,10 @@ class GameCubit extends Cubit<GameState> {
     ));
   }
 
-  /// Start the scripted practice round - straight to the spinning wheel
-  void startPractice() {
-    _run++;
-    _timer?.cancel();
-    _hintTimer?.cancel();
-    _timerHeld = false;
-    _resetStuckTracking();
-    emit(GameState(
-      letters: _generateLetterNodes(),
-      phase: GamePhase.spinningWheel,
-      timeRemaining: GameConfig.startingTime,
-      hintsRemaining: GameConfig.startingHints,
-      stars: StarConfig.startingStars,
-    ));
-  }
-
-  /// Letter the wheel must land on (practice only)
-  String? get forcedWheelLetter => isPractice ? PracticeConfig.letter : null;
-
   /// Restart from scratch - a brand new run, nothing carried over
   void restart() {
-    if (isPractice) {
-      startPractice();
-    } else {
-      resetGame();
-      startGame();
-    }
+    resetGame();
+    startGame();
   }
 
   /// Save game progress for later resumption
@@ -218,7 +189,6 @@ class GameCubit extends Cubit<GameState> {
     required int timeRemaining,
     required int hintsRemaining,
   }) async {
-    if (isPractice) return;
     await StorageService.instance.saveGameProgress(
       letterRound: letterRound,
       completedLetters: completedLetters,
@@ -238,8 +208,9 @@ class GameCubit extends Cubit<GameState> {
   }
 
   void _tick() {
-    // Paused (board hidden) or held by an overlay - the clock stands still
-    if (state.isPaused || _timerHeld) return;
+    // Held by a blocking modal. Pausing does NOT stop the clock - the pause
+    // menu can't be used to buy thinking time.
+    if (_timerHeld) return;
 
     if (state.timeRemaining > 0) {
       final newTime = state.timeRemaining - 1;
@@ -251,8 +222,7 @@ class GameCubit extends Cubit<GameState> {
     }
   }
 
-  /// Hold or release the clock without showing the pause menu
-  /// (tutorial coach marks, blocking modals).
+  /// Hold or release the clock while a blocking modal is open
   void setTimerHeld(bool held) {
     _timerHeld = held;
   }
@@ -287,23 +257,18 @@ class GameCubit extends Cubit<GameState> {
     final upperLetter = letter.toUpperCase();
 
     // Get 5 random categories that have words for this letter
-    // (practice uses its scripted set so the coach's examples are valid)
-    final categories = isPractice && _practiceCategoriesValid(upperLetter)
-        ? PracticeConfig.categories
-        : _get5RandomCategoriesForLetter(upperLetter);
+    final categories = _get5RandomCategoriesForLetter(upperLetter);
 
     _letterStartTime = state.timeRemaining;
     _letterStartHints = state.hintsRemaining;
 
     // Track letter started
-    if (!isPractice) {
-      AnalyticsService.instance.logLetterStarted(
-        letter: upperLetter,
-        letterRound: state.letterRound,
-        timeRemaining: state.timeRemaining,
-        currentScore: state.score,
-      );
-    }
+    AnalyticsService.instance.logLetterStarted(
+      letter: upperLetter,
+      letterRound: state.letterRound,
+      timeRemaining: state.timeRemaining,
+      currentScore: state.score,
+    );
 
     emit(state.copyWith(
       currentLetter: upperLetter,
@@ -319,9 +284,6 @@ class GameCubit extends Cubit<GameState> {
     // Start timer when wheel lands (every round)
     _startTimer();
   }
-
-  bool _practiceCategoriesValid(String letter) => PracticeConfig.categories
-      .every((c) => _dictionary.categoryHasWordsForLetter(c, letter));
 
   /// Called when category jackpot animation completes
   void onCategoryRevealed() {
@@ -375,12 +337,6 @@ class GameCubit extends Cubit<GameState> {
             w.replaceAll(' ', '').length <= WordPreviewConfig.maxLetters)
         .toList()
       ..shuffle(_random);
-
-    // Practice: the coach's example word always shimmers first
-    if (isPractice && state.categoryIndex < PracticeConfig.exampleWords.length) {
-      final example = PracticeConfig.exampleWords[state.categoryIndex];
-      if (candidates.remove(example)) candidates.insert(0, example);
-    }
 
     final paths = <List<int>>[];
     for (final word in candidates) {
@@ -866,6 +822,7 @@ class GameCubit extends Cubit<GameState> {
   /// If there's an existing selection (e.g., after pressing x2), continue from it
   void startDrag(Offset relativePosition) {
     // Reset all tracking state
+    _dwellTimer?.cancel();
     _pendingLetterId = null;
     _pendingLetterEnteredAt = null;
     _lastDragPosition = relativePosition;
@@ -1051,6 +1008,7 @@ class GameCubit extends Cubit<GameState> {
         // New item - start tracking dwell time from scratch
         _pendingLetterId = hit.id;
         _pendingLetterEnteredAt = now;
+        _scheduleDwellConfirm(hit.id);
         if (hit.isOrb) {
           emit(state.copyWith(
             currentDragPosition: relativePosition,
@@ -1075,6 +1033,7 @@ class GameCubit extends Cubit<GameState> {
     }
 
     // Outside all hit zones - reset pending state
+    _dwellTimer?.cancel();
     _pendingLetterId = null;
     _pendingLetterEnteredAt = null;
     emit(state.copyWith(
@@ -1085,6 +1044,20 @@ class GameCubit extends Cubit<GameState> {
       clearPendingLetterId: true,
       clearLetterDwellStartTime: true,
     ));
+  }
+
+  /// A pointer held perfectly still sends no move events, so the dwell is
+  /// also confirmed by a timer - holding on a star always ends in a click.
+  void _scheduleDwellConfirm(int id) {
+    _dwellTimer?.cancel();
+    _dwellTimer = Timer(_dwellTime, () {
+      if (isClosed || !state.isDragging || _pendingLetterId != id) return;
+      final position = _lastDragPosition;
+      if (position == null) return;
+      final hit = _findSelectableAtPosition(position, _outerHitRadius);
+      if (hit == null || hit.id != id) return;
+      _confirmSelection(hit.id, hit.letter, hit.isOrb, position, fromDrag: true);
+    });
   }
 
   /// Confirm selection of a letter OR mystery orb
@@ -1241,6 +1214,7 @@ class GameCubit extends Cubit<GameState> {
   /// isPureConnection is preserved - it will be checked at submit time
   void endDrag() {
     // Reset all tracking state
+    _dwellTimer?.cancel();
     _pendingLetterId = null;
     _pendingLetterEnteredAt = null;
     _lastDragPosition = null;
@@ -1612,19 +1586,6 @@ class GameCubit extends Cubit<GameState> {
     }
 
     return sequence;
-  }
-
-  /// Free, cost-less path preview used by the practice coach
-  void showGuidedPath(String word) {
-    if (state.phase != GamePhase.playingRound) return;
-    final ids = _computeHintLetterSequence(word);
-    if (ids.isEmpty) return;
-    emit(state.copyWith(
-      hintWord: word,
-      hintLetterIds: ids,
-      hintAnimationIndex: 0,
-    ));
-    _animateHintSequence(ids.length);
   }
 
   /// Animate through the hint sequence, highlighting letters one by one
@@ -2088,15 +2049,13 @@ class GameCubit extends Cubit<GameState> {
     final newCompletedLetters = [...state.completedLetters, state.currentLetter!];
 
     // Track letter completion
-    if (!isPractice) {
-      AnalyticsService.instance.logLetterCompleted(
-        letter: state.currentLetter!,
-        letterRound: state.letterRound,
-        pointsEarned: state.pointsEarnedInRound,
-        timeRemaining: state.timeRemaining,
-        totalScore: newScore,
-      );
-    }
+    AnalyticsService.instance.logLetterCompleted(
+      letter: state.currentLetter!,
+      letterRound: state.letterRound,
+      pointsEarned: state.pointsEarnedInRound,
+      timeRemaining: state.timeRemaining,
+      totalScore: newScore,
+    );
 
     // Check if all letters completed (A-Y, no X)
     if (newCompletedLetters.length >= GameConfig.totalLetters) {
@@ -2346,15 +2305,13 @@ class GameCubit extends Cubit<GameState> {
     final score = finalScore ?? state.score;
 
     // Track game completion
-    if (!isPractice) {
-      AnalyticsService.instance.logGameComplete(
-        isWinner: isWinner,
-        finalScore: score,
-        lettersCompleted: state.completedLetters.length,
-        totalTimePlayedSeconds: GameConfig.startingTime - state.timeRemaining,
-        starsEarned: state.starsEarnedThisGame,
-      );
-    }
+    AnalyticsService.instance.logGameComplete(
+      isWinner: isWinner,
+      finalScore: score,
+      lettersCompleted: state.completedLetters.length,
+      totalTimePlayedSeconds: GameConfig.startingTime - state.timeRemaining,
+      starsEarned: state.starsEarnedThisGame,
+    );
 
     // Audio and haptic feedback for game end
     AudioService.instance.duckMusic(const Duration(seconds: 4));
@@ -2366,13 +2323,11 @@ class GameCubit extends Cubit<GameState> {
       HapticService.instance.warning();
     }
 
-    if (!isPractice) {
-      // Clear saved progress - game is over
-      StorageService.instance.clearGameProgress();
+    // Clear saved progress - game is over
+    StorageService.instance.clearGameProgress();
 
-      // Save game session to local storage
-      _saveGameSession(score, isWinner);
-    }
+    // Save game session to local storage
+    _saveGameSession(score, isWinner);
 
     emit(state.copyWith(
       isPlaying: false,
@@ -2383,16 +2338,6 @@ class GameCubit extends Cubit<GameState> {
     ));
   }
 
-  /// Practice letter cleared - show the practice-complete screen
-  void finishPractice() {
-    _timer?.cancel();
-    emit(state.copyWith(
-      phase: GamePhase.gameOver,
-      isWinner: true,
-      isPlaying: false,
-      isPaused: false,
-    ));
-  }
 
   /// Save the completed game session to local storage
   Future<void> _saveGameSession(int score, bool isWinner) async {
@@ -2458,9 +2403,6 @@ class GameCubit extends Cubit<GameState> {
 
   /// Determine mystery outcome using probability weights and pity system
   MysteryOutcome _determineMysteryOutcome() {
-    // Practice introduces orbs with a guaranteed reward
-    if (isPractice) return MysteryOutcome.timeBonus;
-
     // Pity system: after consecutive penalties, guarantee a reward
     if (state.consecutivePenalties >= MysteryOrbConfig.pityThreshold) {
       // Force a reward
@@ -2649,7 +2591,6 @@ class GameCubit extends Cubit<GameState> {
   void onAppPaused() {
     if (!state.isPlaying) return; // Only track if actively playing
     _persistMidLetterProgress(); // App may be killed in the background
-    if (state.isPaused) return; // Clock is already stopped
 
     _backgroundedAt = DateTime.now();
     _timer?.cancel();
@@ -2697,12 +2638,13 @@ class GameCubit extends Cubit<GameState> {
           state.phase == GamePhase.categoryReveal ||
           state.phase == GamePhase.playingRound);
 
-  /// Stop the clock and hide the board. Any drag in progress is dropped so
-  /// nothing can be selected while the board is hidden.
-  /// Returns false if pausing isn't possible right now.
+  /// Open the pause menu: the music stops and the board is hidden, but the
+  /// clock keeps running so pausing never buys thinking time. Any drag in
+  /// progress is dropped. Returns false if pausing isn't possible right now.
   bool pauseGame() {
     if (!canPause) return false;
 
+    _dwellTimer?.cancel();
     _pendingLetterId = null;
     _pendingLetterEnteredAt = null;
     _lastDragPosition = null;
@@ -2722,7 +2664,7 @@ class GameCubit extends Cubit<GameState> {
     return true;
   }
 
-  /// Unpause - the clock picks up exactly where it stopped
+  /// Close the pause menu
   void resumeFromPause() {
     if (!state.isPaused) return;
     emit(state.copyWith(isPaused: false));
@@ -2740,7 +2682,6 @@ class GameCubit extends Cubit<GameState> {
   /// the letter, and the lower of start/current time and hints. Stars are
   /// saved as they are now so spent skips stay spent.
   void _persistMidLetterProgress() {
-    if (isPractice) return;
     if (state.completedLetters.isEmpty) return; // No checkpoint exists yet
     if (state.phase != GamePhase.categoryReveal &&
         state.phase != GamePhase.playingRound) {
@@ -2760,6 +2701,7 @@ class GameCubit extends Cubit<GameState> {
   Future<void> close() {
     _timer?.cancel();
     _hintTimer?.cancel();
+    _dwellTimer?.cancel();
     return super.close();
   }
 }

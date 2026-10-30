@@ -14,10 +14,15 @@ List<int> idsFor(GameCubit cubit, String word) => word
     .map((c) => cubit.state.letters.firstWhere((l) => l.letter == c).id)
     .toList();
 
-/// Practice cubit sitting on the first category, ready to play
-GameCubit playingPractice() {
-  final cubit = GameCubit(isPractice: true)..startPractice();
-  cubit.onWheelLanded(PracticeConfig.letter);
+/// A real game sitting on letter C / ANIMALS, ready to play
+GameCubit playingRound({int letterRound = 1, String category = 'ANIMALS'}) {
+  final cubit = GameCubit()..startGame();
+  cubit.emit(cubit.state.copyWith(letterRound: letterRound));
+  cubit.onWheelLanded('C');
+  cubit.emit(cubit.state.copyWith(
+    category: category,
+    currentCategories: [category, 'COLORS', 'BEVERAGES', 'TRANSPORTATION', 'CLOTHING'],
+  ));
   cubit.onCategoryRevealed();
   return cubit;
 }
@@ -29,26 +34,15 @@ void main() {
     await CategoryService.instance.init();
   });
 
-  group('GameCubit practice', () {
-    test('starts at the wheel, which is rigged to the scripted letter', () {
-      final cubit = GameCubit(isPractice: true)..startPractice();
-      expect(cubit.state.phase, GamePhase.spinningWheel);
-      expect(cubit.forcedWheelLetter, PracticeConfig.letter);
-      expect(GameCubit().forcedWheelLetter, isNull);
-    });
-
-    test('plays the scripted categories, shimmering the example word first', () {
-      final cubit = playingPractice();
-      expect(cubit.state.currentCategories, PracticeConfig.categories);
-      expect(cubit.state.phase, GamePhase.playingRound);
-      expect(cubit.state.mysteryOrbs, isEmpty);
-      // Shimmer paths are real star ids spelling real answers
-      expect(cubit.state.previewPaths.length, WordPreviewConfig.wordCount);
-      expect(cubit.state.previewPaths.first, idsFor(cubit, 'CAT'));
+  group('GameCubit round start', () {
+    test('a few real answers are traced across the stars', () {
+      final cubit = playingRound();
       final starIds = cubit.state.letters.map((l) => l.id).toSet();
+      expect(cubit.state.previewPaths.length, WordPreviewConfig.wordCount);
       for (final path in cubit.state.previewPaths) {
         expect(starIds.containsAll(path), isTrue);
         expect(path.length, lessThanOrEqualTo(WordPreviewConfig.maxLetters));
+        expect(path.first, idsFor(cubit, 'C').single);
       }
     });
 
@@ -65,69 +59,69 @@ void main() {
       final total = WordPreviewConfig.totalMs([path]).toDouble();
       expect(ShimmerFrame.at([path], total - 1)!.fade, lessThan(0.05));
       expect(ShimmerFrame.at([path], total + 1), isNull);
-      // Whole word is gone in well under a second
-      expect(total, lessThan(1000));
+      expect(total, lessThan(1000), reason: 'gone in well under a second');
     });
 
-    test('accepts the coach example word like the real game would', () {
-      final cubit = playingPractice();
-      for (final id in idsFor(cubit, 'CAT')) {
-        cubit.selectLetter(id);
-      }
-      cubit.submitWord();
-      expect(cubit.state.lastAnswerCorrect, isTrue);
-      expect(cubit.state.score, greaterThan(0));
-    });
-
-    test('hint path runs through a mystery orb standing in for a letter', () {
-      final cubit = playingPractice();
-      // Jump to the last practice category, which has one orb
-      cubit.emit(cubit.state.copyWith(
-        categoryIndex: 4,
-        category: PracticeConfig.categories[4],
-      ));
-      cubit.onCategoryRevealed();
+    test('hint paths run through mystery orbs standing in for letters', () {
+      // Round 6+ has an orb; with letter C it replaces a vowel
+      final cubit = playingRound(letterRound: 8, category: 'FOOD & DRINK');
       final orb = cubit.state.mysteryOrbs.single;
+      final ids = {...cubit.state.letters.map((l) => l.id), orb.id};
 
-      cubit.showGuidedPath('CAKE');
-      expect(cubit.state.hintLetterIds, contains(orb.id));
-      expect(cubit.state.hintLetterIds.length, 4);
+      expect(cubit.useHint(), isTrue);
+      final word = cubit.state.hintWord!;
+      expect(cubit.state.hintLetterIds.length, word.replaceAll(' ', '').length);
+      expect(ids.containsAll(cubit.state.hintLetterIds), isTrue);
+      if (word.contains(orb.replacedLetter)) {
+        expect(cubit.state.hintLetterIds, contains(orb.id));
+      }
+    });
+  });
+
+  group('GameCubit dragging', () {
+    testWidgets('holding still on a star still clicks it in', (tester) async {
+      final cubit = playingRound();
+      Offset at(String l) => cubit.state.letters.firstWhere((s) => s.letter == l).position;
+
+      cubit.startDrag(at('C'));
+      cubit.updateDrag(at('A')); // one move event, then perfectly still
+      await tester.pump(const Duration(milliseconds: HitDetectionConfig.dwellTimeMs - 100));
+      expect(cubit.state.selectedLetterIds, idsFor(cubit, 'C'));
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(cubit.state.selectedLetterIds, idsFor(cubit, 'CA'));
+      await cubit.close();
     });
   });
 
   group('GameCubit pause', () {
-    testWidgets('stops the clock and drops any drag; resume picks up', (tester) async {
-      final cubit = playingPractice();
+    testWidgets('the clock keeps ticking while paused (no free thinking time)', (tester) async {
+      final cubit = playingRound();
       final start = cubit.state.timeRemaining;
-
-      await tester.pump(const Duration(seconds: 3));
-      expect(cubit.state.timeRemaining, start - 3);
 
       cubit.startDrag(const Offset(0.5, 0.5));
       expect(cubit.pauseGame(), isTrue);
       expect(cubit.state.isPaused, isTrue);
       expect(cubit.state.isDragging, isFalse);
 
-      await tester.pump(const Duration(seconds: 10));
-      expect(cubit.state.timeRemaining, start - 3);
+      await tester.pump(const Duration(seconds: 5));
+      expect(cubit.state.timeRemaining, start - 5);
 
       cubit.resumeFromPause();
-      await tester.pump(const Duration(seconds: 2));
-      expect(cubit.state.timeRemaining, start - 5);
+      expect(cubit.state.isPaused, isFalse);
       await cubit.close();
     });
 
-    testWidgets('a paid hint freezes while paused instead of expiring', (tester) async {
-      final cubit = playingPractice();
+    testWidgets('a paid hint freezes behind the pause screen', (tester) async {
+      final cubit = playingRound();
       expect(cubit.useHint(), isTrue);
       cubit.pauseGame();
 
-      await tester.pump(const Duration(seconds: 30));
+      await tester.pump(const Duration(seconds: 10));
       expect(cubit.state.hintWord, isNotNull);
       expect(cubit.state.hintAnimationIndex, 0);
 
       cubit.resumeFromPause();
-      await tester.pump(const Duration(seconds: 30));
+      await tester.pump(const Duration(seconds: 10));
       expect(cubit.state.hintWord, isNull);
       await cubit.close();
     });
@@ -142,7 +136,7 @@ void main() {
     });
 
     test('restart begins a brand new run', () {
-      final cubit = playingPractice();
+      final cubit = playingRound();
       cubit.pauseGame();
       cubit.restart();
       expect(cubit.state.isPaused, isFalse);
@@ -152,11 +146,12 @@ void main() {
     });
 
     testWidgets('restarting mid-celebration does not leak into the new run', (tester) async {
-      final cubit = playingPractice();
-      for (final c in 'CAT'.split('')) {
-        cubit.selectLetter(cubit.state.letters.firstWhere((l) => l.letter == c).id);
+      final cubit = playingRound();
+      for (final id in idsFor(cubit, 'CAT')) {
+        cubit.selectLetter(id);
       }
       cubit.submitWord();
+      expect(cubit.state.lastAnswerCorrect, isTrue);
       cubit.pauseGame();
       cubit.restart();
 
@@ -166,13 +161,12 @@ void main() {
       await cubit.close();
     });
 
-    testWidgets('a held clock (tutorial / modal) does not tick', (tester) async {
-      final cubit = playingPractice();
+    testWidgets('a blocking modal can hold the clock', (tester) async {
+      final cubit = playingRound();
       final start = cubit.state.timeRemaining;
       cubit.setTimerHeld(true);
       await tester.pump(const Duration(seconds: 5));
       expect(cubit.state.timeRemaining, start);
-      expect(cubit.state.isPaused, isFalse);
       cubit.setTimerHeld(false);
       await tester.pump(const Duration(seconds: 1));
       expect(cubit.state.timeRemaining, start - 1);
@@ -196,7 +190,7 @@ void main() {
 
       await tester.pump(const Duration(seconds: 30));
       expect(cubit.useHint(), isTrue);
-      // Points and bonus time earned mid-letter are replayed on resume
+      // Points earned mid-letter are replayed on resume, so not banked
       cubit.emit(cubit.state.copyWith(score: 160));
       cubit.quitToMenu();
 
@@ -217,7 +211,7 @@ void main() {
 
   group('GameCubit stuck detection', () {
     testWidgets('pulses the hint after repeated misses, not before', (tester) async {
-      final cubit = playingPractice();
+      final cubit = playingRound();
       final c = idsFor(cubit, 'C').single;
 
       for (var i = 0; i < HintConfig.stuckAfterWrongAttempts; i++) {
@@ -234,18 +228,12 @@ void main() {
     });
 
     testWidgets('pulses the hint after a long time on one category', (tester) async {
-      final cubit = playingPractice();
+      final cubit = playingRound();
       await tester.pump(const Duration(seconds: HintConfig.stuckAfterSeconds - 1));
       expect(cubit.state.isStuck, isFalse);
       await tester.pump(const Duration(seconds: 1));
       expect(cubit.state.isStuck, isTrue);
-
-      // Paused seconds don't count
-      final paused = playingPractice()..pauseGame();
-      await tester.pump(const Duration(seconds: HintConfig.stuckAfterSeconds + 5));
-      expect(paused.state.isStuck, isFalse);
       await cubit.close();
-      await paused.close();
     });
   });
 }

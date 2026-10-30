@@ -84,6 +84,7 @@ class AudioService {
   bool _soundEnabled = true;
   bool _musicEnabled = true;
   bool _musicLoaded = false;
+  bool _musicPaused = false;
 
   bool get isInitialized => _initialized;
 
@@ -189,14 +190,31 @@ class AudioService {
   /// Lower the music while a celebration plays, then bring it back.
   void duckMusic(Duration duration) {
     final engine = _engine;
-    if (engine == null || !_musicEnabled) return;
+    if (engine == null || !_musicEnabled || _musicPaused) return;
     _duckTimer?.cancel();
     engine.setMusicVolume(_duckedMusicVolume, fade: const Duration(milliseconds: 250));
     _duckTimer = Timer(duration, () {
-      if (_musicEnabled) {
+      if (_musicEnabled && !_musicPaused) {
         engine.setMusicVolume(_musicVolume, fade: const Duration(milliseconds: 1500));
       }
     });
+  }
+
+  /// Silence the music (game paused). Sound effects keep playing.
+  void pauseMusic() {
+    if (_musicPaused) return;
+    _musicPaused = true;
+    _duckTimer?.cancel();
+    _engine?.setMusicVolume(0, fade: const Duration(milliseconds: 300));
+  }
+
+  /// Bring the music back after [pauseMusic]
+  void resumeMusic() {
+    if (!_musicPaused) return;
+    _musicPaused = false;
+    if (_musicEnabled) {
+      _engine?.setMusicVolume(_musicVolume, fade: const Duration(milliseconds: 800));
+    }
   }
 
   void _startMusic() {

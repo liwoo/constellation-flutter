@@ -1,2 +1,2 @@
 export 'package:flutter_bloc/flutter_bloc.dart';
-export 'tutorial_cubit.dart';
+export 'practice_cubit.dart';

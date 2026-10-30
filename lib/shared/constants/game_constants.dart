@@ -325,32 +325,3 @@ class LayoutConfig {
   static const double qwertyRow3Indent = 0.12;
 }
 
-/// Scripted practice round: one letter, five categories, each chosen to
-/// teach one mechanic of the real game.
-class PracticeConfig {
-  const PracticeConfig._();
-
-  /// The wheel always lands here so the script's example words work
-  static const String letter = 'C';
-
-  /// Categories in play order (names match the category JSON files)
-  static const List<String> categories = [
-    'ANIMALS', // drag + GO
-    'TRANSPORTATION', // space between words
-    'BEVERAGES', // x2 for double letters
-    'COLORS', // hints
-    'FOOD & DRINK', // mystery orb
-  ];
-
-  /// Example answer suggested by the coach for each category
-  static const List<String> exampleWords = [
-    'CAT',
-    'CABLE CAR',
-    'COFFEE',
-    'CYAN',
-    'CAKE',
-  ];
-
-  /// Mystery orbs per category - only the last one introduces them
-  static int orbCountFor(int categoryIndex) => categoryIndex == 4 ? 1 : 0;
-}
