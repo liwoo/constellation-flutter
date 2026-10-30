@@ -55,7 +55,8 @@ dependencies:
   # Firebase Analytics
   firebase_core: ^3.8.1
   firebase_analytics: ^11.4.1
-
+  flutter_soloud: ^5.2.2
+  web: ^1.1.2
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -149,3 +150,10 @@ flutter_launcher_icons:
     image_path: "assets/logos/app_icon.png"
 
 
+
+# flutter_soloud: we only ship WAV + MP3, so skip the Ogg/Opus/FLAC (Xiph)
+# decoders to keep native binaries smaller.
+hooks:
+  user_defines:
+    flutter_soloud:
+      no_xiph_libs: true

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:constellation_app/shared/services/services.dart';
 import 'package:constellation_app/shared/theme/theme.dart';
 import 'package:constellation_app/game/services/category_dictionary.dart';
 
@@ -84,6 +85,7 @@ class _CategoryJackpotState extends State<CategoryJackpot>
         setState(() {
           _displayIndex = Random().nextInt(_categories.length);
         });
+        AudioService.instance.play(GameSound.wheelTick, volume: 0.8, rate: 1.3);
         _updateDisplay();
       }
     });

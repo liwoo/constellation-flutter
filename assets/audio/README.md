@@ -1,56 +1,45 @@
 # Audio Assets
 
-This directory contains sound effects for the Constellation game.
+Every file in this folder is synthesized by [`tool/generate_audio.py`](../../tool/generate_audio.py)
+— no third-party samples, so no licensing concerns. To tweak a sound, edit its
+`sfx_*` function and regenerate:
 
-## Required Sound Files
+```sh
+brew install sox lame          # one-time
+python3 tool/generate_audio.py # all sounds
+python3 tool/generate_audio.py --only magnet_snap.wav music_ambient.mp3
+```
 
-Download CC0/royalty-free sounds and save them here with these exact names:
+Short, latency-critical sounds are **WAV** (no decoder delay). Longer ones are
+**MP3** to keep the web bundle small.
 
-### Tier 1 (Essential)
-| File | Description | Suggested Duration |
-|------|-------------|-------------------|
-| `select_pop.wav` | Soft click when letter is selected | ~50ms |
-| `success_chime.wav` | Positive chime for correct word | ~500ms |
-| `error_buzz.wav` | Buzzer for incorrect word | ~300ms |
-| `wheel_land.wav` | Impact when wheel stops | ~200ms |
-| `victory.wav` | Fanfare for winning game | ~2s |
-| `game_over.wav` | Sound for losing game | ~1.5s |
+| File | Used for |
+|------|----------|
+| `magnet_snap.wav` | Letter connects (pitch climbs a pentatonic ladder per letter) |
+| `connect_fail.wav` | Practice: connected a letter that doesn't fit the target word |
+| `delete.wav` | DEL / swipe-to-remove |
+| `button_tap.wav` | Menu buttons, space, wheel spin start |
+| `bubbles_rise.mp3` | Word won — bubbles fizzing up |
+| `word_correct.mp3` | Word won — whimsical chime layered over the bubbles |
+| `pure_connection.mp3` | Word built in a single drag — harp glissando |
+| `word_wrong.wav` | Wrong word submitted |
+| `wheel_tick.wav` | Spinning wheel / category reel ratchet |
+| `wheel_land.mp3` | Wheel lands on a letter |
+| `jackpot_reveal.mp3` | Category revealed |
+| `time_warning.wav` | Clock tick in the final 10 seconds |
+| `counter_tick.wav` | Score/time counters counting up (pitch rises) |
+| `hint.mp3` | Hint used |
+| `mystery_activate.mp3` / `mystery_reward.mp3` / `mystery_penalty.wav` | Mystery orbs |
+| `star_earned.mp3` | Star earned / final round hype |
+| `round_complete.mp3` | Letter complete, practice session complete |
+| `game_win.mp3` / `game_lose.mp3` | Game over |
+| `music_ambient.mp3` | Soothing background loop (see below) |
 
-### Tier 2 (Polish)
-| File | Description | Suggested Duration |
-|------|-------------|-------------------|
-| `wheel_spin.wav` | Looping whoosh during spin | ~1s (loopable) |
-| `jackpot_reveal.wav` | Slot machine ding | ~500ms |
-| `button_click.wav` | Generic button tap | ~50ms |
-| `time_warning.wav` | Alert for low time | ~200ms |
-| `round_complete.wav` | Level up sound | ~1s |
+## Music loop
 
-## Recommended Sources (CC0/Royalty-Free)
-
-1. **Kenney.nl** - https://kenney.nl/assets
-   - [UI Audio](https://kenney.nl/assets/ui-audio)
-   - [Impact Sounds](https://kenney.nl/assets/impact-sounds)
-   - [Casino Audio](https://kenney.nl/assets/casino-audio)
-
-2. **itch.io CC0 SFX** - https://itch.io/game-assets/assets-cc0/tag-sound-effects
-   - Interface SFX Pack 1
-   - 200 Free SFX
-
-3. **Pixabay** - https://pixabay.com/sound-effects/
-
-4. **ZapSplat CC0** - https://www.zapsplat.com/license-type/cc0-1-0-universal/
-
-## File Format Guidelines
-
-- **Short SFX (<1s)**: Use `.wav` for lowest latency
-- **Longer sounds (>1s)**: Use `.ogg` for smaller file size
-- **Target size**: <100KB per file for mobile performance
-- **Sample rate**: 44.1kHz or 48kHz
-- **Bit depth**: 16-bit
-
-## Quick Start
-
-1. Visit https://kenney.nl/assets/ui-audio
-2. Download the pack
-3. Copy relevant sounds to this folder
-4. Rename to match the filenames above
+`music_ambient.mp3` is a 16-bar loop at 70 BPM (54.857 s) with a 2 s pre-roll
+and post-roll copied from the loop's own tail and head. `AudioService` loops the
+region `[2 s, 2 s + 54.857 s]`, which stays seamless on every decoder whether or
+not it strips MP3 encoder delay. If you change `MUSIC_BPM`, `MUSIC_BARS` or
+`MUSIC_PREROLL_S` in the generator, update `_musicLoopStart` / `_musicLoopEnd`
+in `lib/shared/services/audio_service.dart` to match.

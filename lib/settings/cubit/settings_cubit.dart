@@ -7,6 +7,7 @@ part 'settings_state.dart';
 class SettingsCubit extends Cubit<SettingsState> {
   SettingsCubit() : super(SettingsState(
     soundEnabled: AudioService.instance.soundEnabled,
+    musicEnabled: AudioService.instance.musicEnabled,
     hapticsEnabled: HapticService.instance.hapticsEnabled,
   ));
 
@@ -26,6 +27,12 @@ class SettingsCubit extends Cubit<SettingsState> {
   void setSoundEnabled(bool enabled) {
     AudioService.instance.setSoundEnabled(enabled);
     emit(state.copyWith(soundEnabled: enabled));
+  }
+
+  /// Set music enabled state directly
+  void setMusicEnabled(bool enabled) {
+    AudioService.instance.setMusicEnabled(enabled);
+    emit(state.copyWith(musicEnabled: enabled));
   }
 
   /// Set haptics enabled state directly

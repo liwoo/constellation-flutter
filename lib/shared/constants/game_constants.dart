@@ -74,6 +74,9 @@ class TimeConfig {
 
   /// Minimum time required to use a hint (seconds)
   static const int minTimeForHint = 15;
+
+  /// Clock ticks play each second at or below this time (seconds)
+  static const int warningThreshold = 10;
 }
 
 /// Clutch time multiplier configuration

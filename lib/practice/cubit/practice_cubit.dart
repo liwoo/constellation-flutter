@@ -324,14 +324,12 @@ class PracticeCubit extends Cubit<PracticeState> {
     _pendingLetterId = null;
     _pendingLetterEnteredAt = null;
 
-    AudioService.instance.play(GameSound.letterSelect);
-    HapticService.instance.light(); // Light haptic, same as game cubit
-
     final newSelection = [...state.selectedLetterIds, letterId];
     emit(state.copyWith(
       selectedLetterIds: newSelection,
       currentDragPosition: position,
     ));
+    _playConnectFeedback();
 
     // Check if word is complete after selection
     _checkWordMatch();
@@ -359,8 +357,32 @@ class PracticeCubit extends Cubit<PracticeState> {
     return null;
   }
 
+  /// Snap if the word is still on track, error buzz if the letter just
+  /// connected doesn't fit the target word.
+  void _playConnectFeedback({bool isSpace = false}) {
+    final target = state.currentWord?.word.toUpperCase();
+    if (target == null) return;
+
+    if (target.startsWith(state.builtWord.toUpperCase())) {
+      if (isSpace) {
+        AudioService.instance.play(GameSound.buttonTap);
+        HapticService.instance.selection();
+      } else {
+        AudioService.instance.playSnap(state.selectedLetterIds.length);
+        HapticService.instance.snap();
+      }
+    } else {
+      AudioService.instance.play(GameSound.connectFail);
+      HapticService.instance.error();
+    }
+  }
+
   /// Clear current selection
   void clearSelection() {
+    if (state.builtWord.isNotEmpty) {
+      AudioService.instance.play(GameSound.delete);
+      HapticService.instance.light();
+    }
     emit(state.copyWith(
       selectedLetterIds: [],
       committedWord: '',
@@ -377,6 +399,7 @@ class PracticeCubit extends Cubit<PracticeState> {
       committedWord: newCommitted,
       selectedLetterIds: [],
     ));
+    _playConnectFeedback(isSpace: true);
 
     _checkWordMatch();
   }
@@ -389,6 +412,7 @@ class PracticeCubit extends Cubit<PracticeState> {
 
     final newSelection = [...state.selectedLetterIds, lastId];
     emit(state.copyWith(selectedLetterIds: newSelection));
+    _playConnectFeedback();
 
     _checkWordMatch();
   }
@@ -401,8 +425,10 @@ class PracticeCubit extends Cubit<PracticeState> {
     final built = state.builtWord.toUpperCase().trim();
 
     if (built == target) {
-      // Success!
-      AudioService.instance.play(GameSound.wordCorrect);
+      // Success! Bubbles fizz up, then a whimsical chime
+      AudioService.instance.duckMusic(const Duration(milliseconds: 2200));
+      AudioService.instance.play(GameSound.bubblesRise);
+      AudioService.instance.playDelayed(GameSound.wordCorrect, const Duration(milliseconds: 120));
       HapticService.instance.success();
 
       emit(state.copyWith(showSuccess: true));
@@ -420,6 +446,8 @@ class PracticeCubit extends Cubit<PracticeState> {
 
     if (newCompletedCount >= PracticeState.wordsPerSession) {
       // Session complete!
+      AudioService.instance.duckMusic(const Duration(seconds: 3));
+      AudioService.instance.play(GameSound.roundComplete);
       emit(state.copyWith(
         phase: PracticePhase.completed,
         completedCount: newCompletedCount,

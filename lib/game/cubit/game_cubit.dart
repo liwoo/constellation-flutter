@@ -176,11 +176,22 @@ class GameCubit extends Cubit<GameState> {
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (state.timeRemaining > 0) {
-        emit(state.copyWith(timeRemaining: state.timeRemaining - 1));
+        final newTime = state.timeRemaining - 1;
+        emit(state.copyWith(timeRemaining: newTime));
+        _playTimeWarning(newTime);
       } else {
         _endGame(isWinner: false);
       }
     });
+  }
+
+  /// Clock tick for the final seconds - speeds up the heart rate a little
+  void _playTimeWarning(int timeRemaining) {
+    if (state.phase != GamePhase.playingRound) return;
+    if (timeRemaining <= 0 || timeRemaining > TimeConfig.warningThreshold) return;
+    final urgent = timeRemaining <= 5;
+    AudioService.instance.play(GameSound.timeWarning, rate: urgent ? 1.25 : 1.0);
+    if (urgent) HapticService.instance.light();
   }
 
   /// Called when spinning wheel lands on a letter
@@ -219,6 +230,9 @@ class GameCubit extends Cubit<GameState> {
 
   /// Called when category jackpot animation completes
   void onCategoryRevealed() {
+    AudioService.instance.play(GameSound.jackpotReveal);
+    HapticService.instance.medium();
+
     // Generate letters AND mystery orbs together in the same grid (like Scrabble blanks)
     final result = _generateLettersAndMysteryOrbs(
       state.category,
@@ -954,11 +968,11 @@ class GameCubit extends Cubit<GameState> {
       return; // Skip - this letter is already the last selected
     }
 
-    // Add the item with clear feedback when connected
-    AudioService.instance.play(GameSound.letterSelect);
-    HapticService.instance.medium(); // Medium haptic for letter connection
-
     final newSelection = [...state.selectedLetterIds, id];
+
+    // Magnetic snap - pitch climbs with each letter in the chain
+    AudioService.instance.playSnap(newSelection.length);
+    HapticService.instance.snap();
 
     // If it's a mystery orb being selected, trigger its effect (only if not already triggered)
     if (isOrb) {
@@ -1144,6 +1158,8 @@ class GameCubit extends Cubit<GameState> {
     // Add letter to selection
     // Tapping letters breaks pure connection (only dragging maintains it)
     final newSelection = [...state.selectedLetterIds, letterId];
+    AudioService.instance.playSnap(newSelection.length);
+    HapticService.instance.snap();
     emit(state.copyWith(
       selectedLetterIds: newSelection,
       isPureConnection: false, // Tapping breaks pure connection
@@ -1158,6 +1174,11 @@ class GameCubit extends Cubit<GameState> {
     // 1. If there's a current selection, just clear that (keep committed word)
     // 2. If no selection but committed word exists, delete the last word segment
     // 3. If nothing, do nothing
+
+    if (state.selectedLetterIds.isNotEmpty || state.committedWord.isNotEmpty) {
+      AudioService.instance.play(GameSound.delete);
+      HapticService.instance.light();
+    }
 
     if (state.selectedLetterIds.isNotEmpty) {
       // Case 1: Clear current selection only, keep committed word
@@ -1211,6 +1232,8 @@ class GameCubit extends Cubit<GameState> {
 
     final newSelection = [...state.selectedLetterIds];
     newSelection.removeAt(index);
+    AudioService.instance.play(GameSound.delete);
+    HapticService.instance.light();
 
     // If we removed a repeated letter (x2), decrement repeat count
     // Check if this was a repeat by seeing if the same ID appears before this index
@@ -1236,6 +1259,9 @@ class GameCubit extends Cubit<GameState> {
       usageCount: state.spaceUsageCount + 1,
     );
 
+    AudioService.instance.play(GameSound.buttonTap);
+    HapticService.instance.selection();
+
     // Commit current selection + space, then clear selection for fresh drag
     final newCommitted = state.committedWord + state.currentSelection + ' ';
     emit(state.copyWith(
@@ -1259,6 +1285,8 @@ class GameCubit extends Cubit<GameState> {
     );
 
     final newSelection = [...state.selectedLetterIds, lastId];
+    AudioService.instance.playSnap(newSelection.length);
+    HapticService.instance.snap();
     emit(state.copyWith(
       selectedLetterIds: newSelection,
       repeatUsageCount: state.repeatUsageCount + 1, // Track bonus usage
@@ -1389,7 +1417,8 @@ class GameCubit extends Cubit<GameState> {
     final hintLetterIds = _computeHintLetterSequence(hintWord);
     if (hintLetterIds.isEmpty) return false;
 
-    // Haptic feedback for hint
+    // Magic-wand feedback for hint
+    AudioService.instance.play(GameSound.hint);
     HapticService.instance.medium();
 
     // Track hint usage
@@ -1453,6 +1482,7 @@ class GameCubit extends Cubit<GameState> {
       Future.delayed(delayPerLetter * i, () {
         if (isClosed) return;
         if (state.hintWord == null) return; // Hint was cleared
+        AudioService.instance.playSnap(i, volume: 0.45);
         emit(state.copyWith(hintAnimationIndex: i));
       });
     }
@@ -1756,8 +1786,13 @@ class GameCubit extends Cubit<GameState> {
   /// Handle correct answer in Alpha Quest
   /// [isFuzzyMatch] - if true, no points are awarded (spelling mistake tolerance)
   void _handleCorrectAnswer(String word, {bool isFuzzyMatch = false}) {
-    // Audio and haptic feedback for correct answer
-    AudioService.instance.play(GameSound.wordCorrect);
+    // Bubbles fizz up, then a whimsical chime lands on top
+    AudioService.instance.duckMusic(const Duration(milliseconds: 2200));
+    AudioService.instance.play(GameSound.bubblesRise);
+    AudioService.instance.playDelayed(GameSound.wordCorrect, const Duration(milliseconds: 120));
+    if (state.isPureConnection) {
+      AudioService.instance.playDelayed(GameSound.pureConnection, const Duration(milliseconds: 450));
+    }
     HapticService.instance.success();
 
     // No points for fuzzy matches (spelling mistakes)
@@ -1914,6 +1949,7 @@ class GameCubit extends Cubit<GameState> {
     }
 
     // Play round complete celebration
+    AudioService.instance.duckMusic(const Duration(seconds: 3));
     AudioService.instance.play(GameSound.roundComplete);
     HapticService.instance.success();
 
@@ -1992,6 +2028,8 @@ class GameCubit extends Cubit<GameState> {
     // Check if this is the FINAL ROUND (round 25) - show hype sequence!
     if (nextRound == GameConfig.totalLetters) {
       // Show final round hype animation before proceeding
+      AudioService.instance.play(GameSound.starEarned);
+      HapticService.instance.heavy();
       emit(state.copyWith(
         letterRound: nextRound,
         timeRemaining: newTime,
@@ -2050,6 +2088,7 @@ class GameCubit extends Cubit<GameState> {
     final starsEarnedThisRound = _calculateStarsEarnedThisRound(finalScore);
 
     // Play victory sound
+    AudioService.instance.duckMusic(const Duration(seconds: 5));
     AudioService.instance.play(GameSound.gameWin);
     HapticService.instance.success();
 
@@ -2143,6 +2182,7 @@ class GameCubit extends Cubit<GameState> {
     );
 
     // Audio and haptic feedback for game end
+    AudioService.instance.duckMusic(const Duration(seconds: 4));
     if (isWinner) {
       AudioService.instance.play(GameSound.gameWin);
       HapticService.instance.success();

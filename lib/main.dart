@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -18,7 +20,8 @@ Future<void> main() async {
   // Initialize services
   await AnalyticsService.instance.init();
   await AudioService.instance.init();
-  await AudioService.instance.preloadSounds();
+  // Decode sounds + start music in the background so launch isn't delayed.
+  unawaited(AudioService.instance.preloadSounds());
   await HapticService.instance.init();
   await CategoryService.instance.init();
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:constellation_app/shared/constants/constants.dart';
+import 'package:constellation_app/shared/services/services.dart';
 import 'package:constellation_app/shared/theme/theme.dart';
 
 /// Styled game button with gradient and 3D effect
@@ -51,7 +52,13 @@ class _GameButtonState extends State<GameButton> {
       onTapDown: isEnabled ? (_) => setState(() => _isPressed = true) : null,
       onTapUp: isEnabled ? (_) => setState(() => _isPressed = false) : null,
       onTapCancel: isEnabled ? () => setState(() => _isPressed = false) : null,
-      onTap: widget.onPressed,
+      onTap: isEnabled
+          ? () {
+              AudioService.instance.play(GameSound.buttonTap);
+              HapticService.instance.selection();
+              widget.onPressed!();
+            }
+          : null,
       child: Opacity(
         opacity: opacity,
         child: AnimatedContainer(
