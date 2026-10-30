@@ -241,6 +241,59 @@ class MysteryOrbConfig {
   }
 }
 
+/// Lives: running out of time costs a life and replays that letter round.
+/// With none left, a rewarded ad or a lives pack keeps the run going.
+class LivesConfig {
+  const LivesConfig._();
+
+  /// Lives every run starts with
+  static const int startingLives = 3;
+
+  /// A replayed round never starts with less time than this (seconds)
+  static const int minRestartTime = 60;
+
+  /// Lives earned by watching an ad
+  static const int adReward = 1;
+
+  /// Length of the (simulated) rewarded ad (seconds)
+  static const int adSeconds = 5;
+}
+
+/// Shooting stars: now and then a star streaks across the board trailing a
+/// bonus letter. Connect it into the next word for extra points.
+class ShootingStarConfig {
+  const ShootingStarConfig._();
+
+  /// Id of the bonus letter star (board letters are 0-25, mystery orbs 100+)
+  static const int letterId = 50;
+
+  /// Seconds into a category before the first one can streak in
+  static const int minDelaySeconds = 5;
+  static const int maxDelaySeconds = 12;
+
+  /// Seconds before another can follow one that burned out uncaught
+  static const int minGapSeconds = 10;
+  static const int maxGapSeconds = 18;
+
+  /// Chance (percent) that a category gets a shooting star at all
+  static const int chancePercent = 70;
+
+  /// Seconds the bonus letter stays on the board
+  static const int lifetimeSeconds = 12;
+
+  /// It flickers in its final seconds
+  static const int fadingSeconds = 3;
+
+  /// The word's points are multiplied by this when it uses the bonus letter
+  static const int scoreMultiplier = 2;
+
+  /// Smallest bonus a caught shooting star is worth (points)
+  static const int minBonusPoints = 10;
+
+  /// Streak across the board (milliseconds)
+  static const int streakMs = 1100;
+}
+
 /// Letter difficulty configuration
 class DifficultyConfig {
   const DifficultyConfig._();

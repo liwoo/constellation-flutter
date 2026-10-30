@@ -1,9 +1,13 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:constellation_app/shared/constants/constants.dart';
 import 'package:constellation_app/shared/services/services.dart';
+import 'package:constellation_app/shared/theme/theme.dart';
 import 'package:constellation_app/shared/widgets/widgets.dart';
 import 'package:constellation_app/game/cubit/game_cubit.dart';
 import 'package:constellation_app/game/widgets/connection_painter.dart';
+import 'package:constellation_app/game/widgets/shooting_star.dart';
 import 'package:constellation_app/game/widgets/star_shimmer.dart';
 
 class LetterConstellation extends StatefulWidget {
@@ -33,6 +37,8 @@ class LetterConstellation extends StatefulWidget {
     // Round-start shimmer
     this.shimmerPaths = const [],
     this.shimmerPaused = false,
+    // Shooting star bonus letter
+    this.shootingStar,
   });
 
   final List<LetterNode> letters;
@@ -64,6 +70,9 @@ class LetterConstellation extends StatefulWidget {
   final List<List<int>> shimmerPaths;
   final bool shimmerPaused; // Hold the shimmer while the board is hidden
 
+  // Shooting star whose bonus letter is on the board (its node is in [letters])
+  final ShootingStar? shootingStar;
+
   @override
   State<LetterConstellation> createState() => _LetterConstellationState();
 }
@@ -78,9 +87,23 @@ class _LetterConstellationState extends State<LetterConstellation>
       AnimationController(vsync: this)..addListener(_shimmerChime);
   String _lastChime = '';
 
+  // Shooting star: the streak in, then a shimmer while it waits
+  late final AnimationController _streakController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: ShootingStarConfig.streakMs),
+  );
+  late final AnimationController _comaController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1800),
+  );
+
   @override
   void initState() {
     super.initState();
+    if (widget.shootingStar != null) {
+      _streakController.value = 1;
+      _comaController.repeat();
+    }
     _celebrationController = AnimationController(
       duration: const Duration(milliseconds: AnimationConfig.pureConnectionAnimationDuration),
       vsync: this,
@@ -145,6 +168,13 @@ class _LetterConstellationState extends State<LetterConstellation>
       _celebrationController.reset();
     }
 
+    if (widget.shootingStar != null && oldWidget.shootingStar == null) {
+      _streakController.forward(from: 0);
+      _comaController.repeat();
+    } else if (widget.shootingStar == null && oldWidget.shootingStar != null) {
+      _comaController.stop();
+    }
+
     if (_shimmerKey(widget.shimmerPaths) != _shimmerKey(oldWidget.shimmerPaths)) {
       _startShimmer();
     } else if (widget.shimmerPaused != oldWidget.shimmerPaused) {
@@ -159,6 +189,8 @@ class _LetterConstellationState extends State<LetterConstellation>
   @override
   void dispose() {
     _shimmerController.dispose();
+    _streakController.dispose();
+    _comaController.dispose();
     _celebrationController.dispose();
     super.dispose();
   }
@@ -198,6 +230,83 @@ class _LetterConstellationState extends State<LetterConstellation>
   double _hintFocusOpacity(int id) {
     if (!_isHintActive) return 1.0;
     return widget.hintLetterIds.contains(id) ? 1.0 : 0.15;
+  }
+
+  LetterNode? get _shootingStarNode => widget.letters
+      .where((l) => l.id == ShootingStarConfig.letterId)
+      .firstOrNull;
+
+  /// Flickers as it burns out
+  double _shootingStarOpacity(ShootingStar star) {
+    if (!star.isFading) return 1.0;
+    return 0.45 + 0.55 * (0.5 + 0.5 * sin(_comaController.value * 6 * pi));
+  }
+
+  /// The bonus letter: pops in as the streak lands, wears a gold ring that
+  /// runs down with its life, a "2x" tag, and flickers before burning out
+  Widget _shootingStarBubble(Widget bubble, ShootingStar star, double size) {
+    // Outside the cyan dwell ring so the two never overlap
+    final ring = size + 20;
+    return AnimatedBuilder(
+      animation: Listenable.merge([_streakController, _comaController]),
+      builder: (context, child) {
+        final t = _streakController.value;
+        final appear = t < 0.75 ? 0.0 : Curves.easeOutBack.transform((t - 0.75) / 0.25);
+        return Opacity(
+          opacity: (appear.clamp(0.0, 1.0) * _shootingStarOpacity(star)).clamp(0.0, 1.0),
+          child: Transform.scale(scale: 0.4 + 0.6 * appear, child: child),
+        );
+      },
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          bubble,
+          // Life left
+          Positioned(
+            left: -10,
+            top: -10,
+            width: ring,
+            height: ring,
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(end: star.secondsLeft / ShootingStarConfig.lifetimeSeconds),
+              duration: const Duration(seconds: 1),
+              builder: (context, life, _) => CustomPaint(
+                painter: DwellRingPainter(
+                  progress: life,
+                  color: AppColors.accentGold,
+                  strokeWidth: 2,
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            left: -8,
+            top: -8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.accentGold, AppColors.accentOrange],
+                ),
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: [
+                  BoxShadow(color: AppColors.black.withAlpha(120), blurRadius: 3),
+                ],
+              ),
+              child: Text(
+                '${ShootingStarConfig.scoreMultiplier}x',
+                style: const TextStyle(
+                  color: AppColors.black,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Calculate bubble size based on device screen size (not container)
@@ -344,6 +453,35 @@ class _LetterConstellationState extends State<LetterConstellation>
                     );
                   }),
 
+                  // Shooting star comet - streaks in, then its tail lingers
+                  if (widget.shootingStar case final star?)
+                    if (_shootingStarNode case final node?)
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: RepaintBoundary(
+                            child: AnimatedBuilder(
+                              animation: Listenable.merge([_streakController, _comaController]),
+                              builder: (context, _) => CustomPaint(
+                                painter: ShootingStarPainter(
+                                  from: Offset(
+                                    star.from.dx * containerSize.width,
+                                    star.from.dy * containerSize.height,
+                                  ),
+                                  to: Offset(
+                                    node.position.dx * containerSize.width,
+                                    node.position.dy * containerSize.height,
+                                  ),
+                                  streak: _streakController.value,
+                                  glow: _comaController.value,
+                                  starSize: bubbleSize,
+                                  opacity: _shootingStarOpacity(star),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+
                   // Letter bubbles - static positions, no movement
                   ...widget.letters.map((letter) {
                     final x = letter.position.dx * constraints.maxWidth;
@@ -355,6 +493,22 @@ class _LetterConstellationState extends State<LetterConstellation>
                     final isApproaching = widget.approachingLetterIds.contains(letter.id);
                     final dwellProgress = _getLetterDwellProgress(letter.id);
                     final justConnected = widget.lastConnectedLetterId == letter.id;
+                    final isShootingStar = letter.id == ShootingStarConfig.letterId;
+
+                    Widget bubble = LetterBubble(
+                      letter: letter.letter,
+                      points: letter.points,
+                      isSelected: isSelected,
+                      isStartingLetter: isStarting && !_isHintActive && !isShootingStar,
+                      isHintLetter: isHint,
+                      isApproaching: isApproaching,
+                      dwellProgress: dwellProgress,
+                      justConnected: justConnected,
+                      size: bubbleSize,
+                    );
+                    if (isShootingStar && widget.shootingStar != null) {
+                      bubble = _shootingStarBubble(bubble, widget.shootingStar!, bubbleSize);
+                    }
 
                     return Positioned(
                       left: x - (bubbleSize / 2),
@@ -363,17 +517,7 @@ class _LetterConstellationState extends State<LetterConstellation>
                         child: AnimatedOpacity(
                           opacity: _hintFocusOpacity(letter.id),
                           duration: const Duration(milliseconds: 250),
-                          child: LetterBubble(
-                            letter: letter.letter,
-                            points: letter.points,
-                            isSelected: isSelected,
-                            isStartingLetter: isStarting && !_isHintActive,
-                            isHintLetter: isHint,
-                            isApproaching: isApproaching,
-                            dwellProgress: dwellProgress,
-                            justConnected: justConnected,
-                            size: bubbleSize,
-                          ),
+                          child: bubble,
                         ),
                       ),
                     );
@@ -381,6 +525,22 @@ class _LetterConstellationState extends State<LetterConstellation>
 
                   // Shimmer rings + sparkles, over the stars
                   shimmerLayer(front: true),
+
+                  // "Shooting star!" as one lands - in the strip under the
+                  // lowest row, which stars never use
+                  Positioned(
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: ShootingStarCallout(
+                        trigger: widget.shootingStar?.from, // Fixed for a star's whole life
+                        title: 'SHOOTING STAR!',
+                        subtitle: 'Use ${widget.shootingStar?.letter ?? ''} in your word for '
+                            '${ShootingStarConfig.scoreMultiplier}x points',
+                      ),
+                    ),
+                  ),
                 ],
               ),
             );

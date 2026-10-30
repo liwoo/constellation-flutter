@@ -218,6 +218,12 @@ class _ConnectDemoState extends State<ConnectDemo>
           if (ms >= _clickT) 'T',
         ];
         final submitted = ms >= _tapGo;
+        // Star being held, and how far its ring has filled
+        final (String, double)? pending = ms >= _arriveA && ms < _clickA
+            ? ('A', (ms - _arriveA) / (_clickA - _arriveA))
+            : ms >= _arriveT && ms < _clickT
+                ? ('T', (ms - _arriveT) / (_clickT - _arriveT))
+                : null;
         // Whole demo fades out at the end of the loop
         final opacity = ms < 200
             ? ms / 200
@@ -258,6 +264,7 @@ class _ConnectDemoState extends State<ConnectDemo>
                       child: Row(
                         children: [
                           for (final l in selected) _chip(l, submitted),
+                          if (pending != null) _pendingChip(pending.$1, pending.$2),
                           if (submitted) ...[
                             const SizedBox(width: 6),
                             const Icon(Icons.check_circle, color: Color(0xFF4CAF50), size: 22),
@@ -348,6 +355,55 @@ class _ConnectDemoState extends State<ConnectDemo>
           fontWeight: FontWeight.bold,
           fontSize: 13,
         ),
+      ),
+    );
+  }
+
+  /// The held star's letter, ringed as its dwell fills - as in the game
+  Widget _pendingChip(String letter, double progress) {
+    return Container(
+      margin: const EdgeInsets.only(left: 2, right: 6),
+      width: 26,
+      height: 26,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: AppColors.primaryDarkPurple,
+        shape: BoxShape.circle,
+        border: Border.all(color: AppColors.accentCyan, width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.accentCyan.withAlpha((progress * 180).toInt()),
+            blurRadius: 8 + progress * 6,
+            spreadRadius: progress * 2,
+          ),
+        ],
+      ),
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          Positioned(
+            left: -6,
+            top: -6,
+            right: -6,
+            bottom: -6,
+            child: CustomPaint(
+              painter: DwellRingPainter(
+                progress: progress,
+                color: AppColors.accentCyan,
+                strokeWidth: 2.5,
+              ),
+            ),
+          ),
+          Text(
+            letter,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+            ),
+          ),
+        ],
       ),
     );
   }

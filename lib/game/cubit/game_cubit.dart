@@ -27,6 +27,12 @@ class GameCubit extends Cubit<GameState> {
   int _secondsOnCategory = 0;
   int _wrongAttemptsOnCategory = 0;
 
+  // Shooting star: the second-on-category the next one streaks in (null =
+  // none coming), and the committed word's length once a segment holding
+  // its letter was banked with space
+  int? _shootingStarDueAt;
+  int? _shootingStarBankedAt;
+
   // Checkpoint taken when the wheel lands - quitting mid-letter can never
   // save more time or hints than the letter started with
   int? _letterStartTime;
@@ -120,11 +126,14 @@ class GameCubit extends Cubit<GameState> {
       // Star tracking - restore saved star state (includes spent stars)
       stars: progress.stars,
       starsEarnedThisGame: progress.starsEarnedThisGame,
+      lives: progress.lives,
       lastStarThreshold: progress.lastStarThreshold,
       showStarEarnedAnimation: false,
       starsEarnedThisRound: 0,
       isPaused: false,
       isStuck: false,
+      clearShootingStar: true,
+      clearLastShootingStarBonus: true,
     ));
   }
 
@@ -166,12 +175,15 @@ class GameCubit extends Cubit<GameState> {
       clearUsedHintWords: true,
       // Star tracking - ALWAYS start fresh with 2 stars (no persistence across games)
       stars: StarConfig.startingStars,
+      lives: LivesConfig.startingLives,
       starsEarnedThisGame: 0,
       lastStarThreshold: 0,
       showStarEarnedAnimation: false,
       starsEarnedThisRound: 0,
       isPaused: false,
       isStuck: false,
+      clearShootingStar: true,
+      clearLastShootingStarBonus: true,
     ));
   }
 
@@ -188,6 +200,7 @@ class GameCubit extends Cubit<GameState> {
     required int score,
     required int timeRemaining,
     required int hintsRemaining,
+    int? lives,
   }) async {
     await StorageService.instance.saveGameProgress(
       letterRound: letterRound,
@@ -198,6 +211,7 @@ class GameCubit extends Cubit<GameState> {
       stars: state.stars,
       lastStarThreshold: state.lastStarThreshold,
       starsEarnedThisGame: state.starsEarnedThisGame,
+      lives: lives ?? state.lives,
     );
   }
 
@@ -217,8 +231,9 @@ class GameCubit extends Cubit<GameState> {
       if (state.phase == GamePhase.playingRound) _secondsOnCategory++;
       emit(state.copyWith(timeRemaining: newTime, isStuck: _looksStuck));
       _playTimeWarning(newTime);
+      _tickShootingStar();
     } else {
-      _endGame(isWinner: false);
+      _timeUp();
     }
   }
 
@@ -303,6 +318,7 @@ class GameCubit extends Cubit<GameState> {
     _lastDragTime = null;
     _hintTimer?.cancel();
     _resetStuckTracking();
+    _scheduleShootingStar(first: true);
 
     emit(state.copyWith(
       phase: GamePhase.playingRound,
@@ -318,6 +334,8 @@ class GameCubit extends Cubit<GameState> {
       clearHintWord: true, // A hint from the last category points at old positions
       isStuck: false,
       previewPaths: const [],
+      clearShootingStar: true, // Its letter went with the old board
+      clearLastShootingStarBonus: true,
     ));
     // Paths are computed against the freshly placed stars
     emit(state.copyWith(previewPaths: _pickPreviewPaths()));
@@ -346,6 +364,145 @@ class GameCubit extends Cubit<GameState> {
       if (path.length == word.replaceAll(' ', '').length) paths.add(path);
     }
     return paths;
+  }
+
+  // ============================================
+  // SHOOTING STARS
+  // ============================================
+
+  /// Plan when the next shooting star streaks in. Not every category gets
+  /// one; one that burns out uncaught may be followed by another.
+  void _scheduleShootingStar({required bool first}) {
+    _shootingStarBankedAt = null;
+    if (first && _random.nextInt(100) >= ShootingStarConfig.chancePercent) {
+      _shootingStarDueAt = null;
+      return;
+    }
+    final (lo, hi) = first
+        ? (ShootingStarConfig.minDelaySeconds, ShootingStarConfig.maxDelaySeconds)
+        : (ShootingStarConfig.minGapSeconds, ShootingStarConfig.maxGapSeconds);
+    _shootingStarDueAt = _secondsOnCategory + lo + _random.nextInt(hi - lo + 1);
+  }
+
+  /// Its letter is in the word being built (current drag or a banked segment)
+  bool get _shootingStarInWord =>
+      state.shootingStar != null &&
+      (state.selectedLetterIds.contains(ShootingStarConfig.letterId) ||
+          _shootingStarBankedAt != null);
+
+  /// Once a second: streak one in when it's due, or count it down and let
+  /// it burn out. Never pulled out of a word that's using it.
+  void _tickShootingStar() {
+    if (state.phase != GamePhase.playingRound) return;
+    if (state.lastAnswerCorrect == true) return; // Celebrating - board is done
+
+    final star = state.shootingStar;
+    if (star == null) {
+      final due = _shootingStarDueAt;
+      // Held back while paused so the streak isn't missed behind the menu
+      if (due != null && _secondsOnCategory >= due && !state.isPaused) {
+        spawnShootingStar();
+      }
+      return;
+    }
+
+    if (star.secondsLeft > 1) {
+      emit(state.copyWith(shootingStar: star.copyWith(secondsLeft: star.secondsLeft - 1)));
+    } else if (!_shootingStarInWord) {
+      _removeShootingStar();
+      _scheduleShootingStar(first: false);
+    }
+  }
+
+  /// Streak a shooting star onto the board, trailing a bonus letter from one
+  /// of this category's answers. Returns false if none could be sent.
+  @visibleForTesting
+  bool spawnShootingStar() {
+    _shootingStarDueAt = null;
+    if (state.phase != GamePhase.playingRound || state.shootingStar != null) return false;
+    final letter = _pickShootingStarLetter();
+    if (letter == null) return false;
+
+    final fromLeft = _random.nextBool();
+    final from = Offset(fromLeft ? -0.15 : 1.15, -0.1 + _random.nextDouble() * 0.3);
+
+    AudioService.instance.play(GameSound.shootingStar);
+    HapticService.instance.light();
+    emit(state.copyWith(
+      letters: [
+        ...state.letters,
+        LetterNode(
+          id: ShootingStarConfig.letterId,
+          letter: letter,
+          points: LetterPoints.values[letter] ?? 1,
+          position: _findOpenSpot(),
+        ),
+      ],
+      shootingStar: ShootingStar(
+        letter: letter,
+        from: from,
+        secondsLeft: ShootingStarConfig.lifetimeSeconds,
+      ),
+    ));
+    return true;
+  }
+
+  /// A letter from a random answer (never its first letter, which the
+  /// board always has), so the bonus can always be worked into a word
+  String? _pickShootingStarLetter() {
+    final start = state.currentLetter;
+    if (start == null) return null;
+    final lettersOnly = RegExp(r'^[A-Z]{2,}$');
+    final words = _dictionary
+        .getWordsForCategoryAndLetter(state.category, start)
+        .map((w) => w.toUpperCase().replaceAll(' ', ''))
+        .where(lettersOnly.hasMatch)
+        .toList();
+    if (words.isEmpty) return null;
+    final word = words[_random.nextInt(words.length)];
+    return word[1 + _random.nextInt(word.length - 1)];
+  }
+
+  /// The roomiest of a handful of random spots on the board
+  Offset _findOpenSpot() {
+    final taken = [
+      for (final l in state.letters) l.position,
+      for (final o in state.mysteryOrbs)
+        if (o.isActive) o.position,
+    ];
+    var best = const Offset(0.5, 0.4);
+    var bestGap = -1.0;
+    for (var i = 0; i < 40; i++) {
+      final spot = Offset(
+        LayoutConfig.gridPaddingX + _random.nextDouble() * (1 - 2 * LayoutConfig.gridPaddingX),
+        LayoutConfig.gridPaddingY +
+            _random.nextDouble() * (LayoutConfig.gridAvailableHeight - LayoutConfig.gridPaddingY),
+      );
+      final gap = taken.isEmpty ? 1.0 : taken.map((t) => _distance(spot, t)).reduce(min);
+      if (gap > bestGap) {
+        best = spot;
+        bestGap = gap;
+      }
+    }
+    return best;
+  }
+
+  /// It burned out: take its letter off the board
+  void _removeShootingStar() {
+    const id = ShootingStarConfig.letterId;
+    final wasPending = state.pendingLetterId == id;
+    if (_pendingLetterId == id) {
+      _dwellTimer?.cancel();
+      _pendingLetterId = null;
+      _pendingLetterEnteredAt = null;
+    }
+    emit(state.copyWith(
+      letters: state.letters.where((l) => l.id != id).toList(),
+      clearShootingStar: true,
+      approachingLetterIds: state.approachingLetterIds.where((i) => i != id).toList(),
+      clearPendingLetterId: wasPending,
+      clearLetterDwellStartTime: wasPending,
+    ));
   }
 
   /// Get all unique letters needed for valid words in this category/letter round
@@ -1187,7 +1344,7 @@ class GameCubit extends Cubit<GameState> {
           consecutivePenalties: state.consecutivePenalties + 1,
         ));
         if (newTime <= 0) {
-          _endGame(isWinner: false);
+          _timeUp();
         }
         break;
 
@@ -1319,6 +1476,12 @@ class GameCubit extends Cubit<GameState> {
         newSpaceCount = newCommitted.split(' ').length - 1;
       }
 
+      // Deleted the segment holding the shooting star's letter
+      final bankedAt = _shootingStarBankedAt;
+      if (bankedAt != null && newCommitted.length < bankedAt) {
+        _shootingStarBankedAt = null;
+      }
+
       emit(state.copyWith(
         committedWord: newCommitted,
         spaceUsageCount: newSpaceCount,
@@ -1371,6 +1534,9 @@ class GameCubit extends Cubit<GameState> {
 
     // Commit current selection + space, then clear selection for fresh drag
     final newCommitted = state.committedWord + state.currentSelection + ' ';
+    if (state.selectedLetterIds.contains(ShootingStarConfig.letterId)) {
+      _shootingStarBankedAt = newCommitted.length;
+    }
     emit(state.copyWith(
       committedWord: newCommitted,
       selectedLetterIds: [], // Clear selection for fresh start
@@ -1569,8 +1735,9 @@ class GameCubit extends Cubit<GameState> {
 
     for (final char in upperWord.split('')) {
       // Find the letter node for this character
+      // (never the shooting star - it may burn out mid-hint)
       final node = state.letters.firstWhere(
-        (l) => l.letter.toUpperCase() == char,
+        (l) => l.id != ShootingStarConfig.letterId && l.letter.toUpperCase() == char,
         orElse: () => const LetterNode(id: -1, letter: '', points: 0, position: Offset.zero),
       );
       if (node.id >= 0) {
@@ -1922,8 +2089,19 @@ class GameCubit extends Cubit<GameState> {
 
     // No points for fuzzy matches (spelling mistakes)
     int wordScore = 0;
+    var shootingStarBonus = 0;
     if (!isFuzzyMatch) {
       wordScore = _calculateWordScore(word);
+
+      // Shooting star caught in this word
+      if (_shootingStarInWord) {
+        shootingStarBonus = max(
+          wordScore * (ShootingStarConfig.scoreMultiplier - 1),
+          ShootingStarConfig.minBonusPoints,
+        );
+        wordScore += shootingStarBonus;
+        AudioService.instance.playDelayed(GameSound.shootingStarCatch, const Duration(milliseconds: 300));
+      }
 
       // Apply score multiplier if active (from mystery orb)
       if (state.scoreMultiplierActive) {
@@ -1999,6 +2177,8 @@ class GameCubit extends Cubit<GameState> {
       lastAnswerCorrect: true,
       lastTimeBonus: timeBonus > 0 ? timeBonus : null,
       clearLastTimeBonus: timeBonus == 0,
+      lastShootingStarBonus: shootingStarBonus > 0 ? shootingStarBonus : null,
+      clearLastShootingStarBonus: shootingStarBonus == 0,
       scoreMultiplierActive: false,
       showConnectionAnimation: wasPureConnection,
       isPureConnection: false,
@@ -2294,7 +2474,7 @@ class GameCubit extends Cubit<GameState> {
     ));
 
     if (newTime <= 0) {
-      _endGame(isWinner: false);
+      _timeUp();
     }
   }
 
@@ -2338,6 +2518,131 @@ class GameCubit extends Cubit<GameState> {
     ));
   }
 
+
+  // ============================================
+  // LIVES
+  // ============================================
+
+  /// Time a replayed letter round starts with: what it began with, but
+  /// never less than [LivesConfig.minRestartTime]
+  int get _restartTime =>
+      max(_letterStartTime ?? GameConfig.startingTime, LivesConfig.minRestartTime);
+
+  /// Seconds a life buys: the replayed round's starting clock
+  int get replayTime => _restartTime;
+
+  /// The clock hit zero. The run isn't over yet: the player can spend a
+  /// life to replay this letter round, earn or buy one, or give up.
+  void _timeUp() {
+    _run++; // Drop any pending celebration transition
+    _timer?.cancel();
+    _hintTimer?.cancel();
+    _dwellTimer?.cancel();
+    _pendingLetterId = null;
+    _pendingLetterEnteredAt = null;
+    _lastDragPosition = null;
+    _lastDragTime = null;
+
+    AudioService.instance.duckMusic(const Duration(seconds: 3));
+    AudioService.instance.play(GameSound.gameLose);
+    HapticService.instance.warning();
+
+    emit(state.copyWith(
+      phase: GamePhase.outOfTime,
+      timeRemaining: 0,
+      isPlaying: false,
+      isPaused: false,
+      isDragging: false,
+      clearDragPosition: true,
+      approachingLetterIds: [],
+      clearPendingLetterId: true,
+      clearLetterDwellStartTime: true,
+      clearPendingMysteryOrb: true,
+      clearMysteryOrbDwellStartTime: true,
+      clearHintWord: true,
+      isStuck: false,
+    ));
+    _checkpointOutOfTime();
+  }
+
+  /// Closing the app on the time's-up screen mustn't dodge its cost: the
+  /// save is exactly what spending a life gives, or nothing with none left
+  void _checkpointOutOfTime() {
+    if (state.lives <= 0) {
+      StorageService.instance.clearGameProgress();
+      return;
+    }
+    if (state.completedLetters.isEmpty) return; // No checkpoint exists yet
+    _saveProgress(
+      letterRound: state.letterRound,
+      completedLetters: state.completedLetters,
+      score: state.letterRoundStartScore,
+      timeRemaining: _restartTime,
+      hintsRemaining: _letterStartHints ?? state.hintsRemaining,
+      lives: state.lives - 1,
+    );
+  }
+
+  /// Spend a life to replay the letter round the clock ran out on: same
+  /// letter and categories from the first, with the score, time and hints
+  /// it began with. Returns false if there's no life to spend.
+  bool useLife() {
+    if (state.phase != GamePhase.outOfTime || state.lives <= 0) return false;
+    _run++;
+
+    AnalyticsService.instance.logLifeUsed(
+      livesRemaining: state.lives - 1,
+      letterRound: state.letterRound,
+    );
+    AudioService.instance.play(GameSound.mysteryReward);
+    HapticService.instance.success();
+
+    // Words solved on this letter are solved again on the replay
+    final solvedBefore = max(0, state.completedWords.length - state.categoryIndex);
+    final letters = _generateLetterNodes();
+
+    emit(state.copyWith(
+      lives: state.lives - 1,
+      phase: GamePhase.categoryReveal,
+      isPlaying: true,
+      timeRemaining: _restartTime,
+      hintsRemaining: _letterStartHints ?? state.hintsRemaining,
+      score: state.letterRoundStartScore,
+      completedWords: state.completedWords.sublist(0, solvedBefore),
+      categoryIndex: 0,
+      category: state.currentCategories.isNotEmpty ? state.currentCategories.first : state.category,
+      letters: letters,
+      selectedLetterIds: [],
+      committedWord: '',
+      spaceUsageCount: 0,
+      repeatUsageCount: 0,
+      isPureConnection: false,
+      showConnectionAnimation: false,
+      scoreMultiplierActive: false,
+      clearLastAnswerCorrect: true,
+      clearLastTimeBonus: true,
+      clearLastMysteryOutcome: true,
+      clearShootingStar: true,
+      clearLastShootingStarBonus: true,
+    ));
+    _startTimer();
+    return true;
+  }
+
+  /// Lives from a rewarded ad or a purchase
+  void addLives(int amount, {required String source}) {
+    if (amount <= 0) return;
+    AnalyticsService.instance.logLivesGained(amount: amount, source: source);
+    emit(state.copyWith(lives: state.lives + amount));
+    // A life earned on the time's-up screen survives the app closing
+    if (state.phase == GamePhase.outOfTime) _checkpointOutOfTime();
+  }
+
+  /// Done for this run - on to the final score
+  void giveUp() {
+    if (state.phase != GamePhase.outOfTime) return;
+    _endGame(isWinner: false);
+  }
 
   /// Save the completed game session to local storage
   Future<void> _saveGameSession(int score, bool isWinner) async {
@@ -2388,12 +2693,15 @@ class GameCubit extends Cubit<GameState> {
       clearUsedHintWords: true,
       // Star tracking - ALWAYS start fresh with 2 stars (no persistence across games)
       stars: StarConfig.startingStars,
+      lives: LivesConfig.startingLives,
       starsEarnedThisGame: 0,
       lastStarThreshold: 0,
       showStarEarnedAnimation: false,
       starsEarnedThisRound: 0,
       isPaused: false,
       isStuck: false,
+      clearShootingStar: true,
+      clearLastShootingStarBonus: true,
     ));
   }
 
@@ -2547,10 +2855,8 @@ class GameCubit extends Cubit<GameState> {
   /// Continue game after time runs out using 3 stars
   /// Returns true if continue was successful, false if not enough stars
   bool continueWithStars() {
-    // Only works during game over phase
-    if (state.phase != GamePhase.gameOver) return false;
-    // Can only continue if it was a loss (not a win)
-    if (state.isWinner) return false;
+    // Offered on the time's-up screen, before the run is scored
+    if (state.phase != GamePhase.outOfTime) return false;
     // Need at least 3 stars
     if (state.stars < StarConfig.continueCost) return false;
 
@@ -2602,6 +2908,7 @@ class GameCubit extends Cubit<GameState> {
     if (_backgroundedAt == null) return; // Wasn't backgrounded while playing
     if (state.phase == GamePhase.notStarted ||
         state.phase == GamePhase.gameOver ||
+        state.phase == GamePhase.outOfTime ||
         state.phase == GamePhase.letterComplete) {
       // Don't deduct time during these phases
       _backgroundedAt = null;
@@ -2617,7 +2924,7 @@ class GameCubit extends Cubit<GameState> {
 
     if (newTime <= 0) {
       // Time ran out while backgrounded
-      _endGame(isWinner: false);
+      _timeUp();
     } else {
       emit(state.copyWith(timeRemaining: newTime));
       // Restart the timer

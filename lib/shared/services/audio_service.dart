@@ -37,6 +37,10 @@ enum GameSound {
   mysteryReward('mystery_reward.mp3', 0.6),
   mysteryPenalty('mystery_penalty.wav', 0.45),
 
+  // Shooting stars
+  shootingStar('shooting_star.mp3', 0.6),
+  shootingStarCatch('shooting_star_catch.mp3', 0.7),
+
   // Celebrations
   starEarned('star_earned.mp3', 0.75),
   roundComplete('round_complete.mp3', 0.75),

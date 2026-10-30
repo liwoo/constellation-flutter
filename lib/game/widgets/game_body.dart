@@ -12,6 +12,8 @@ import 'package:constellation_app/game/widgets/spinning_wheel.dart';
 import 'package:constellation_app/game/widgets/category_jackpot.dart';
 import 'package:constellation_app/game/widgets/animated_counter.dart';
 import 'package:constellation_app/game/widgets/how_to_connect_dialog.dart';
+import 'package:constellation_app/game/widgets/out_of_time_overlay.dart';
+import 'package:constellation_app/game/widgets/shooting_star.dart';
 import 'package:constellation_app/shared/widgets/widgets.dart';
 import 'package:constellation_app/shared/constants/constants.dart';
 import 'package:constellation_app/shared/theme/theme.dart';
@@ -375,6 +377,21 @@ class _GameBodyState extends State<GameBody>
                     ),
                   ),
 
+                // Shooting star caught - bonus points
+                Positioned(
+                  top: MediaQuery.of(context).size.height * 0.42,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: ShootingStarCallout(
+                      trigger: state.lastShootingStarBonus,
+                      title: '+${state.lastShootingStarBonus ?? 0} STAR BONUS',
+                      subtitle: 'Shooting star caught!',
+                      duration: const Duration(milliseconds: 1800),
+                    ),
+                  ),
+                ),
+
                 // Mystery outcome feedback overlay
                 if (_displayedMysteryOutcome != null)
                   Positioned(
@@ -449,6 +466,10 @@ class _GameBodyState extends State<GameBody>
                     ),
                   ),
 
+                // Time's up - spend a life, earn/buy one, or give up
+                if (state.phase == GamePhase.outOfTime)
+                  OutOfTimeOverlay(state: state),
+
                 // Game Over overlay
                 if (state.phase == GamePhase.gameOver)
                   _buildGameOverOverlay(context, state),
@@ -479,6 +500,7 @@ class _GameBodyState extends State<GameBody>
         return _buildFinalRoundHypeScreen(context, state);
       case GamePhase.victorySequence:
         return _buildVictorySequenceScreen(context, state);
+      case GamePhase.outOfTime:
       case GamePhase.gameOver:
         return _buildPlayingScreen(context, state); // Show behind overlay
     }
@@ -1076,6 +1098,7 @@ class _GameBodyState extends State<GameBody>
               // A few answers shimmer across the stars as the category begins
               shimmerPaths: state.previewPaths,
               shimmerPaused: state.isPaused,
+              shootingStar: state.shootingStar,
               onDragStart: (pos) {
                 context.read<GameCubit>().startDrag(pos);
               },
@@ -1586,9 +1609,16 @@ class _GameBodyState extends State<GameBody>
                       ],
                     ),
                   ),
-                  // Star icons below score
+                  // Stars and lives below score
                   const SizedBox(height: 4),
-                  _buildStarIcons(state.stars),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildStarIcons(state.stars),
+                      const SizedBox(width: 8),
+                      LivesHearts(lives: state.lives),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -2154,7 +2184,7 @@ class _GameBodyState extends State<GameBody>
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                state.isWinner ? 'VICTORY!' : 'TIME\'S UP!',
+                state.isWinner ? 'VICTORY!' : 'GAME OVER',
                 style: GoogleFonts.orbitron(
                   color: state.isWinner
                       ? AppColors.accentGold
@@ -2192,56 +2222,6 @@ class _GameBodyState extends State<GameBody>
                 ),
               ),
               const SizedBox(height: 32),
-
-              // Continue with Stars button (only show if not a win and has enough stars)
-              if (!state.isWinner && state.stars >= StarConfig.continueCost) ...[
-                GestureDetector(
-                  onTap: () => context.read<GameCubit>().continueWithStars(),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 32,
-                      vertical: 14,
-                    ),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF9C27B0), Color(0xFF7B1FA2)],
-                      ),
-                      borderRadius: BorderRadius.circular(30),
-                      border: Border.all(
-                        color: AppColors.accentGold,
-                        width: 2,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.accentGold.withAlpha(100),
-                          blurRadius: 15,
-                          spreadRadius: 2,
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.star,
-                          color: AppColors.accentGold,
-                          size: 24,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'CONTINUE (${StarConfig.continueCost}⭐)',
-                          style: GoogleFonts.orbitron(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-              ],
 
               // Try Again button
               GestureDetector(

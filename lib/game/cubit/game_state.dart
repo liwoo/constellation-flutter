@@ -67,6 +67,35 @@ class MysteryOrb {
   }
 }
 
+/// A shooting star that streaked onto the board, trailing a bonus letter.
+/// The letter itself lives in [GameState.letters] with id
+/// [ShootingStarConfig.letterId], so it connects like any other star.
+class ShootingStar {
+  const ShootingStar({
+    required this.letter,
+    required this.from,
+    required this.secondsLeft,
+  });
+
+  final String letter;
+
+  /// Where the streak entered (relative, just off the board edge)
+  final Offset from;
+
+  /// Seconds until it burns out
+  final int secondsLeft;
+
+  int get id => ShootingStarConfig.letterId;
+
+  bool get isFading => secondsLeft <= ShootingStarConfig.fadingSeconds;
+
+  ShootingStar copyWith({int? secondsLeft}) => ShootingStar(
+        letter: letter,
+        from: from,
+        secondsLeft: secondsLeft ?? this.secondsLeft,
+      );
+}
+
 /// Game phase for Alpha Quest mode
 enum GamePhase {
   /// Initial state - show start screen
@@ -83,6 +112,8 @@ enum GamePhase {
   finalRoundHype,
   /// Victory sequence - epic celebration after winning
   victorySequence,
+  /// Clock hit zero - spend a life to replay the round, or give up
+  outOfTime,
   /// Game over - win or lose
   gameOver,
 }
@@ -151,6 +182,11 @@ class GameState extends Equatable {
     this.isPaused = false, // Player paused - clock stopped, board hidden
     this.isStuck = false, // Player looks stuck - hint button pulses
     this.previewPaths = const [], // Star paths of answers that shimmer as a category begins
+    // Shooting star bonus letter
+    this.shootingStar,
+    this.lastShootingStarBonus, // Points from the last caught shooting star (for animation)
+    // Lives - spent to replay a letter round when the clock runs out
+    this.lives = LivesConfig.startingLives,
   });
 
   /// Special ID for space character in selectedLetterIds
@@ -231,6 +267,13 @@ class GameState extends Equatable {
   final bool isPaused; // Player paused - clock stopped, board hidden
   final bool isStuck; // Player looks stuck - hint button pulses
   final List<List<int>> previewPaths; // Star paths of answers that shimmer as a category begins
+
+  // Shooting star bonus letter
+  final ShootingStar? shootingStar; // On the board right now, if any
+  final int? lastShootingStarBonus; // Points from the last caught one (for animation)
+
+  // Lives - spent to replay a letter round when the clock runs out
+  final int lives;
 
   /// Points earned in current letter round
   int get pointsEarnedInRound => score - letterRoundStartScore;
@@ -338,6 +381,9 @@ class GameState extends Equatable {
         isPaused,
         isStuck,
         previewPaths,
+        shootingStar,
+        lastShootingStarBonus,
+        lives,
       ];
 
   GameState copyWith({
@@ -402,6 +448,11 @@ class GameState extends Equatable {
     bool? isPaused,
     bool? isStuck,
     List<List<int>>? previewPaths,
+    ShootingStar? shootingStar,
+    bool clearShootingStar = false,
+    int? lastShootingStarBonus,
+    bool clearLastShootingStarBonus = false,
+    int? lives,
   }) {
     return GameState(
       letters: letters ?? this.letters,
@@ -453,6 +504,11 @@ class GameState extends Equatable {
       isPaused: isPaused ?? this.isPaused,
       isStuck: isStuck ?? this.isStuck,
       previewPaths: previewPaths ?? this.previewPaths,
+      shootingStar: clearShootingStar ? null : (shootingStar ?? this.shootingStar),
+      lastShootingStarBonus: clearLastShootingStarBonus
+          ? null
+          : (lastShootingStarBonus ?? this.lastShootingStarBonus),
+      lives: lives ?? this.lives,
     );
   }
 }
