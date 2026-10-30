@@ -11,6 +11,7 @@ import 'package:constellation_app/game/widgets/letter_constellation.dart';
 import 'package:constellation_app/game/widgets/spinning_wheel.dart';
 import 'package:constellation_app/game/widgets/category_jackpot.dart';
 import 'package:constellation_app/game/widgets/animated_counter.dart';
+import 'package:constellation_app/game/widgets/coach_targets.dart';
 import 'package:constellation_app/shared/widgets/widgets.dart';
 import 'package:constellation_app/shared/constants/constants.dart';
 import 'package:constellation_app/shared/theme/theme.dart';
@@ -22,7 +23,10 @@ import 'package:constellation_app/shared/services/shake_detection_service.dart';
 /// {@endtemplate}
 class GameBody extends StatefulWidget {
   /// {@macro game_body}
-  const GameBody({super.key});
+  const GameBody({super.key, this.tutorialOverlayBuilder});
+
+  /// Practice draws its coach marks on top of the real game screen
+  final Widget Function(CoachTargets targets)? tutorialOverlayBuilder;
 
   @override
   State<GameBody> createState() => _GameBodyState();
@@ -45,6 +49,11 @@ class _GameBodyState extends State<GameBody>
 
   // High score tracking
   int _highScore = 0;
+
+  // Anchors for practice coach marks
+  final _targets = CoachTargets();
+
+  bool get _isPractice => context.read<GameCubit>().isPractice;
 
   @override
   void initState() {
@@ -440,6 +449,15 @@ class _GameBodyState extends State<GameBody>
                 // Game Over overlay
                 if (state.phase == GamePhase.gameOver)
                   _buildGameOverOverlay(context, state),
+
+                // Pause menu - opaque so the board stays hidden until resume
+                if (state.isPaused) _buildPauseOverlay(context, state),
+
+                // Practice coach marks
+                if (widget.tutorialOverlayBuilder != null)
+                  Positioned.fill(
+                    child: widget.tutorialOverlayBuilder!(_targets),
+                  ),
               ],
             ),
           );
@@ -614,8 +632,12 @@ class _GameBodyState extends State<GameBody>
   }
 
   Widget _buildWheelScreen(BuildContext context, GameState state) {
-    // Use weighted letters - easier letters more likely early in game
-    final remainingLetters = context.read<GameCubit>().getWeightedRemainingLetters();
+    final cubit = context.read<GameCubit>();
+    // Use weighted letters - easier letters more likely early in game.
+    // Practice shows the plain alphabet and lands on its scripted letter.
+    final remainingLetters = cubit.isPractice
+        ? cubit.getRemainingLetters()
+        : cubit.getWeightedRemainingLetters();
 
     return Column(
       children: [
@@ -633,12 +655,16 @@ class _GameBodyState extends State<GameBody>
           ),
         ),
         const SizedBox(height: 24),
-        SpinningWheel(
-          letters: remainingLetters,
-          onLetterSelected: (letter) {
-            context.read<GameCubit>().onWheelLanded(letter);
-          },
-          size: 280,
+        _targets.mark(
+          CoachTarget.wheel,
+          SpinningWheel(
+            letters: remainingLetters,
+            targetLetter: cubit.forcedWheelLetter,
+            onLetterSelected: (letter) {
+              context.read<GameCubit>().onWheelLanded(letter);
+            },
+            size: 280,
+          ),
         ),
         const Spacer(),
       ],
@@ -787,7 +813,12 @@ class _GameBodyState extends State<GameBody>
                     curve: Curves.elasticOut,
                     child: GestureDetector(
                       onTap: show
-                          ? () => context.read<GameCubit>().continueToNextRound()
+                          ? () {
+                              final cubit = context.read<GameCubit>();
+                              cubit.isPractice
+                                  ? cubit.finishPractice()
+                                  : cubit.continueToNextRound();
+                            }
                           : null,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
@@ -808,7 +839,7 @@ class _GameBodyState extends State<GameBody>
                           ],
                         ),
                         child: Text(
-                          'CONTINUE',
+                          _isPractice ? 'FINISH' : 'CONTINUE',
                           style: GoogleFonts.orbitron(
                             color: AppColors.black,
                             fontSize: 20,
@@ -989,7 +1020,10 @@ class _GameBodyState extends State<GameBody>
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             if (state.currentLetter != null) ...[
-              _buildSmallLetterBadge(state.currentLetter!),
+              _targets.mark(
+                CoachTarget.startBadge,
+                _buildSmallLetterBadge(state.currentLetter!),
+              ),
               const SizedBox(width: 8),
             ],
             Flexible(
@@ -1021,7 +1055,7 @@ class _GameBodyState extends State<GameBody>
 
         // Letter constellation
         Expanded(
-          child: Padding(
+          child: _targets.mark(CoachTarget.constellation, Padding(
             padding: const EdgeInsets.symmetric(
               horizontal: AppSpacing.sm,
             ),
@@ -1044,6 +1078,9 @@ class _GameBodyState extends State<GameBody>
               lastConnectedLetterId: state.lastConnectedLetterId,
               // Pure connection celebration
               showConnectionAnimation: state.showConnectionAnimation,
+              // A few answers shimmer across the stars as the category begins
+              shimmerPaths: state.previewPaths,
+              shimmerPaused: state.isPaused,
               onDragStart: (pos) {
                 context.read<GameCubit>().startDrag(pos);
               },
@@ -1054,7 +1091,7 @@ class _GameBodyState extends State<GameBody>
                 context.read<GameCubit>().endDrag();
               },
             ),
-          ),
+          )),
         ),
 
         // DEL and GO buttons at the bottom
@@ -1098,12 +1135,15 @@ class _GameBodyState extends State<GameBody>
       clipBehavior: Clip.none,
       children: [
         // Category banner
-        CategoryBanner(category: state.category),
+        _targets.mark(
+          CoachTarget.category,
+          CategoryBanner(category: state.category),
+        ),
         // Skip badge positioned at bottom-right corner
         Positioned(
           right: -4,
           bottom: -6,
-          child: GestureDetector(
+          child: _targets.mark(CoachTarget.skip, GestureDetector(
             onTap: () {
               if (hasEnoughStars) {
                 context.read<GameCubit>().skipCategoryWithStar();
@@ -1156,16 +1196,16 @@ class _GameBodyState extends State<GameBody>
                 ],
               ),
             ),
-          ),
+          )),
         ),
       ],
     );
   }
 
   void _showNotEnoughStarsModal(BuildContext context, int currentStars) {
-    // Pause the game timer while modal is open
+    // Hold the game timer while modal is open
     final cubit = context.read<GameCubit>();
-    cubit.onAppPaused();
+    cubit.setTimerHeld(true);
 
     showDialog(
       context: context,
@@ -1278,8 +1318,8 @@ class _GameBodyState extends State<GameBody>
             GestureDetector(
               onTap: () {
                 Navigator.pop(ctx);
-                // Resume the game timer
-                cubit.onAppResumed();
+                // Release the game timer
+                cubit.setTimerHeld(false);
               },
               child: Container(
                 padding: const EdgeInsets.symmetric(
@@ -1497,7 +1537,7 @@ class _GameBodyState extends State<GameBody>
                 children: [
                   // High score target (always visible)
                   Text(
-                    'BEST: $_highScore',
+                    _isPractice ? 'PRACTICE' : 'BEST: $_highScore',
                     style: GoogleFonts.exo2(
                       color: state.score > _highScore
                           ? AppColors.accentGold
@@ -1563,7 +1603,7 @@ class _GameBodyState extends State<GameBody>
           ),
 
           // Timer badge
-          Column(
+          _targets.mark(CoachTarget.timer, Column(
             children: [
               _buildCoinBadge(
                 text: '${state.timeRemaining}',
@@ -1583,14 +1623,17 @@ class _GameBodyState extends State<GameBody>
                 ),
               ),
             ],
-          ),
+          )),
 
           const SizedBox(width: AppSpacing.xs),
 
-          // Restart button
-          _buildIconButton(
-            icon: Icons.refresh,
-            onTap: () => _showRestartConfirmation(context),
+          // Pause button - stops the clock and hides the board
+          _targets.mark(
+            CoachTarget.pause,
+            _buildIconButton(
+              icon: Icons.pause_rounded,
+              onTap: () => context.read<GameCubit>().pauseGame(),
+            ),
           ),
         ],
       ),
@@ -1665,10 +1708,19 @@ class _GameBodyState extends State<GameBody>
   }
 
   void _showExitConfirmation(BuildContext context) {
-    final state = context.read<GameCubit>().state;
+    final cubit = context.read<GameCubit>();
+    final state = cubit.state;
     final hasCompletedLetters = state.completedLetters.isNotEmpty;
+    // Clock stops (and board hides) while deciding
+    final pausedHere = cubit.pauseGame();
 
-    showDialog(
+    final message = cubit.isPractice
+        ? 'Leave the practice round?'
+        : hasCompletedLetters
+            ? 'Your progress is saved. You can resume from the start of this letter.'
+            : 'Your progress will be lost.';
+
+    showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.primaryDarkPurple,
@@ -1677,18 +1729,16 @@ class _GameBodyState extends State<GameBody>
           side: BorderSide(color: AppColors.accentGold.withAlpha(100)),
         ),
         title: Text(
-          'Exit Game?',
+          cubit.isPractice ? 'Exit Practice?' : 'Exit Game?',
           style: GoogleFonts.orbitron(color: AppColors.white),
         ),
         content: Text(
-          hasCompletedLetters
-              ? 'Your progress is saved. You can resume later.'
-              : 'Your progress will be lost.',
+          message,
           style: GoogleFonts.exo2(color: AppColors.white.withAlpha(200)),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx),
+            onPressed: () => Navigator.pop(ctx, false),
             child: Text(
               'CANCEL',
               style: GoogleFonts.exo2(color: AppColors.white.withAlpha(150)),
@@ -1696,7 +1746,8 @@ class _GameBodyState extends State<GameBody>
           ),
           TextButton(
             onPressed: () {
-              Navigator.pop(ctx);
+              Navigator.pop(ctx, true);
+              cubit.quitToMenu();
               context.go('/');
             },
             child: Text(
@@ -1706,10 +1757,15 @@ class _GameBodyState extends State<GameBody>
           ),
         ],
       ),
-    );
+    ).then((exited) {
+      if (exited != true && pausedHere && !cubit.isClosed) {
+        cubit.resumeFromPause();
+      }
+    });
   }
 
   void _showRestartConfirmation(BuildContext context) {
+    final cubit = context.read<GameCubit>();
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1719,11 +1775,13 @@ class _GameBodyState extends State<GameBody>
           side: BorderSide(color: AppColors.accentGold.withAlpha(100)),
         ),
         title: Text(
-          'Restart Game?',
+          cubit.isPractice ? 'Restart Practice?' : 'Restart Game?',
           style: GoogleFonts.orbitron(color: AppColors.white),
         ),
         content: Text(
-          'Start a new game from the beginning.',
+          cubit.isPractice
+              ? 'Start the practice round over from the wheel.'
+              : 'This run ends here. You start again from the first letter with a fresh clock - nothing carries over.',
           style: GoogleFonts.exo2(color: AppColors.white.withAlpha(200)),
         ),
         actions: [
@@ -1737,8 +1795,7 @@ class _GameBodyState extends State<GameBody>
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
-              context.read<GameCubit>().resetGame();
-              context.read<GameCubit>().startGame();
+              cubit.restart();
             },
             child: Text(
               'RESTART',
@@ -1860,7 +1917,7 @@ class _GameBodyState extends State<GameBody>
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           // DEL button - clears everything
-          GestureDetector(
+          _targets.mark(CoachTarget.del, GestureDetector(
             onTap: hasContent
                 ? () => context.read<GameCubit>().clearSelection()
                 : null,
@@ -1870,10 +1927,10 @@ class _GameBodyState extends State<GameBody>
               isActive: hasContent,
               size: 44,
             ),
-          ),
+          )),
 
           // SPACE button - commits current selection and allows fresh drag
-          GestureDetector(
+          _targets.mark(CoachTarget.space, GestureDetector(
             onTap: canAddSpace
                 ? () => context.read<GameCubit>().insertSpace()
                 : null,
@@ -1885,10 +1942,10 @@ class _GameBodyState extends State<GameBody>
               size: 44,
               badgeCount: state.spaceUsageCount,
             ),
-          ),
+          )),
 
           // x2 button (repeat last letter for doubles like SS)
-          GestureDetector(
+          _targets.mark(CoachTarget.x2, GestureDetector(
             onTap: canRepeat
                 ? () => context.read<GameCubit>().repeatLastLetter()
                 : null,
@@ -1900,25 +1957,28 @@ class _GameBodyState extends State<GameBody>
               size: 44,
               badgeCount: state.repeatUsageCount,
             ),
-          ),
+          )),
 
-          // HINT button - shows a valid word
-          GestureDetector(
+          // HINT button - shows a valid word; breathes when the player is stuck
+          _targets.mark(CoachTarget.hint, GestureDetector(
             onTap: canUseHint
                 ? () => context.read<GameCubit>().useHint()
                 : null,
-            child: ActionBubble(
-              label: '?',
-              isSubmit: false,
-              isHint: true,
-              isActive: canUseHint,
-              size: 44,
-              badgeCount: state.hintsRemaining,
+            child: AttentionPulse(
+              active: canUseHint && state.isStuck,
+              child: ActionBubble(
+                label: '?',
+                isSubmit: false,
+                isHint: true,
+                isActive: canUseHint,
+                size: 44,
+                badgeCount: state.hintsRemaining,
+              ),
             ),
-          ),
+          )),
 
           // GO button - submits full word (committed + selection)
-          GestureDetector(
+          _targets.mark(CoachTarget.go, GestureDetector(
             onTap: hasContent
                 ? () => context.read<GameCubit>().submitWord()
                 : null,
@@ -1928,13 +1988,149 @@ class _GameBodyState extends State<GameBody>
               isActive: hasContent,
               size: 44,
             ),
-          ),
+          )),
         ],
       ),
     );
   }
 
+  /// Opaque pause screen. The clock is stopped and the board, category and
+  /// word are all hidden, so pausing can't be used to study the stars.
+  Widget _buildPauseOverlay(BuildContext context, GameState state) {
+    final cubit = context.read<GameCubit>();
+
+    return Positioned.fill(
+      child: GradientBackground(
+        child: Stack(
+          children: [
+            const Positioned.fill(
+              child: StarDecoration(starCount: 60, starSize: 2),
+            ),
+            SafeArea(
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.pause_circle_filled_rounded,
+                      color: AppColors.accentGold,
+                      size: 72,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'PAUSED',
+                      style: GoogleFonts.orbitron(
+                        color: AppColors.accentGold,
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 4,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${state.timeRemaining}s left \u2022 board hidden until you resume',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.exo2(
+                        color: Colors.white.withAlpha(170),
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 36),
+                    _buildPauseMenuButton(
+                      label: 'RESUME',
+                      icon: Icons.play_arrow_rounded,
+                      primary: true,
+                      onTap: cubit.resumeFromPause,
+                    ),
+                    const SizedBox(height: 14),
+                    _buildPauseMenuButton(
+                      label: 'RESTART',
+                      icon: Icons.refresh_rounded,
+                      onTap: () => _showRestartConfirmation(context),
+                    ),
+                    const SizedBox(height: 14),
+                    _buildPauseMenuButton(
+                      label: 'QUIT',
+                      icon: Icons.home_rounded,
+                      onTap: () => _showExitConfirmation(context),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPauseMenuButton({
+    required String label,
+    required IconData icon,
+    required VoidCallback onTap,
+    bool primary = false,
+  }) {
+    return GestureDetector(
+      onTap: () {
+        AudioService.instance.play(GameSound.buttonTap);
+        HapticService.instance.selection();
+        onTap();
+      },
+      child: Container(
+        width: 220,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          gradient: primary
+              ? const LinearGradient(
+                  colors: [AppColors.accentGold, AppColors.accentOrange],
+                )
+              : null,
+          color: primary ? null : Colors.white.withAlpha(20),
+          borderRadius: BorderRadius.circular(30),
+          border: primary
+              ? null
+              : Border.all(color: Colors.white.withAlpha(110), width: 2),
+          boxShadow: primary
+              ? [
+                  BoxShadow(
+                    color: AppColors.accentGold.withAlpha(100),
+                    blurRadius: 20,
+                    spreadRadius: 2,
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              color: primary ? AppColors.black : Colors.white,
+              size: 22,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: GoogleFonts.orbitron(
+                color: primary ? AppColors.black : Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildGameOverOverlay(BuildContext context, GameState state) {
+    final isPractice = _isPractice;
+    final title = isPractice && state.isWinner
+        ? 'PRACTICE\nCOMPLETE!'
+        : state.isWinner
+            ? 'VICTORY!'
+            : 'TIME\'S UP!';
+
     return Container(
       color: AppColors.black.withAlpha(200),
       child: Center(
@@ -1971,16 +2167,28 @@ class _GameBodyState extends State<GameBody>
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                state.isWinner ? 'VICTORY!' : 'TIME\'S UP!',
+                title,
+                textAlign: TextAlign.center,
                 style: GoogleFonts.orbitron(
                   color: state.isWinner
                       ? AppColors.accentGold
                       : AppColors.accentPink,
-                  fontSize: 36,
+                  fontSize: isPractice ? 28 : 36,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 4,
                 ),
               ),
+              if (isPractice && state.isWinner) ...[
+                const SizedBox(height: 12),
+                Text(
+                  "You've used every move.\nYou're ready for Alpha Quest!",
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.exo2(
+                    color: Colors.white.withAlpha(210),
+                    fontSize: 15,
+                  ),
+                ),
+              ],
               const SizedBox(height: 24),
               Text(
                 'SCORE',
@@ -1998,17 +2206,47 @@ class _GameBodyState extends State<GameBody>
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              // High score comparison
-              _buildHighScoreDisplay(state.score),
-              const SizedBox(height: 16),
-              Text(
-                'Letters: ${state.completedLetters.length}/${GameState.totalLetters}',
-                style: GoogleFonts.exo2(
-                  color: Colors.white.withAlpha(200),
-                  fontSize: 18,
+              if (!isPractice) ...[
+                // High score comparison
+                _buildHighScoreDisplay(state.score),
+                const SizedBox(height: 16),
+                Text(
+                  'Letters: ${state.completedLetters.length}/${GameState.totalLetters}',
+                  style: GoogleFonts.exo2(
+                    color: Colors.white.withAlpha(200),
+                    fontSize: 18,
+                  ),
                 ),
-              ),
+              ],
               const SizedBox(height: 32),
+
+              // Practice graduates straight into the real game
+              if (isPractice && state.isWinner) ...[
+                GestureDetector(
+                  onTap: () => context.go('/game'),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 32,
+                      vertical: 16,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [AppColors.accentGold, AppColors.accentOrange],
+                      ),
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    child: Text(
+                      'PLAY ALPHA QUEST',
+                      style: GoogleFonts.orbitron(
+                        color: AppColors.black,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
 
               // Continue with Stars button (only show if not a win and has enough stars)
               if (!state.isWinner && state.stars >= StarConfig.continueCost) ...[
@@ -2062,23 +2300,33 @@ class _GameBodyState extends State<GameBody>
 
               // Try Again button
               GestureDetector(
-                onTap: () => context.read<GameCubit>().resetGame(),
+                onTap: () {
+                  final cubit = context.read<GameCubit>();
+                  isPractice ? cubit.restart() : cubit.resetGame();
+                },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 48,
-                    vertical: 16,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isPractice ? 32 : 48,
+                    vertical: isPractice ? 12 : 16,
                   ),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [AppColors.accentGold, AppColors.accentOrange],
-                    ),
+                    gradient: isPractice && state.isWinner
+                        ? null
+                        : const LinearGradient(
+                            colors: [AppColors.accentGold, AppColors.accentOrange],
+                          ),
+                    border: isPractice && state.isWinner
+                        ? Border.all(color: Colors.white.withAlpha(150), width: 2)
+                        : null,
                     borderRadius: BorderRadius.circular(30),
                   ),
                   child: Text(
-                    'TRY AGAIN',
+                    isPractice ? 'PRACTICE AGAIN' : 'TRY AGAIN',
                     style: GoogleFonts.orbitron(
-                      color: AppColors.black,
-                      fontSize: 20,
+                      color: isPractice && state.isWinner
+                          ? Colors.white
+                          : AppColors.black,
+                      fontSize: isPractice ? 16 : 20,
                       fontWeight: FontWeight.bold,
                     ),
                   ),

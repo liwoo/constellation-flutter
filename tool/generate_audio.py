@@ -236,17 +236,18 @@ def sfx_connect_fail():
     return fade_tail(x)
 
 
-def sfx_word_wrong():
-    """Gentle descending 'bwomp' - clear but not punishing."""
-    dur = 0.55
-    t = times(dur)
-    glide = 370 * (262 / 370) ** np.clip(t / 0.35, 0, 1)
-    vib = 1 + 0.012 * np.sin(2 * np.pi * 7 * t) * np.clip(t / 0.2, 0, 1)
-    f = glide * vib
-    tone = osc(f, dur) + 0.3 * osc(f * 2, dur) + 0.12 * osc(f * 3, dur)
-    tone *= adsr(dur, 0.01, 0.1, 0.7, 0.25)
-    thud = lowpass(noise(0.08), 300) * exp_env(0.08, 0.02) * 2.0
-    return fade_tail(mix(dur, (0.0, tone), (0.0, thud)))
+def sfx_word_wrong(tmp):
+    """Gentle wood-on-wood 'tok-tok' - two soft knocks, the second lower."""
+    def knock(f, amp):
+        dur = 0.16
+        # Free wooden bar modes; wood damps the upper modes very quickly
+        body = partials(f, dur, [(1, 1.0, 0.032), (2.57, 0.32, 0.012), (4.2, 0.10, 0.006)], attack=0.0006)
+        hollow = osc(f * 0.5, dur) * exp_env(dur, 0.02, attack=0.0008) * 0.45
+        contact = lowpass(highpass_diff(noise(0.01)), 3200) * exp_env(0.01, 0.0016, attack=0.0) * 0.9
+        return mix(dur, (0, body), (0, hollow), (0, contact)) * amp
+    x = mix(0.4, (0.0, knock(540, 1.0)), (0.12, knock(455, 0.7)))
+    x = with_reverb(x, reverberance=18, room=25, wet_db=-10, tail=0.12, tmp=tmp)
+    return fade_tail(x, 0.04)
 
 
 def sfx_bubbles_rise(tmp):
@@ -571,7 +572,7 @@ def music_loop(tmp):
 SFX = {
     'magnet_snap.wav': lambda tmp: sfx_magnet_snap(),
     'connect_fail.wav': lambda tmp: sfx_connect_fail(),
-    'word_wrong.wav': lambda tmp: sfx_word_wrong(),
+    'word_wrong.wav': sfx_word_wrong,
     'bubbles_rise.mp3': sfx_bubbles_rise,
     'word_correct.mp3': sfx_word_correct,
     'pure_connection.mp3': sfx_pure_connection,

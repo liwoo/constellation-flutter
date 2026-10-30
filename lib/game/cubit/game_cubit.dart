@@ -12,11 +12,33 @@ import 'package:constellation_app/shared/services/services.dart';
 part 'game_state.dart';
 
 class GameCubit extends Cubit<GameState> {
-  GameCubit() : super(const GameInitial()) {
+  GameCubit({this.isPractice = false}) : super(const GameInitial()) {
     _initializeLetters();
   }
 
+  /// Practice runs the real game on a scripted letter/category set, without
+  /// saving progress, scores or analytics.
+  final bool isPractice;
+
   Timer? _timer;
+  Timer? _hintTimer;
+
+  // Clock held by an overlay (tutorial coach mark, modal) - separate from
+  // the player-facing pause so the two never fight over the timer
+  bool _timerHeld = false;
+
+  // Stuck detection for the pulsing hint button (reset per category)
+  int _secondsOnCategory = 0;
+  int _wrongAttemptsOnCategory = 0;
+
+  // Checkpoint taken when the wheel lands - quitting mid-letter can never
+  // save more time or hints than the letter started with
+  int? _letterStartTime;
+  int? _letterStartHints;
+
+  // Bumped whenever a run starts, so delayed transitions from an abandoned
+  // run (e.g. restart from the pause menu mid-celebration) are dropped
+  int _run = 0;
   final _dictionary = CategoryDictionary.instance;
   final _random = Random();
 
@@ -34,7 +56,9 @@ class GameCubit extends Cubit<GameState> {
   static const double _passThroughVelocity = HitDetectionConfig.passThroughVelocity;
 
   // Mystery orb count based on round (from constants)
-  int get _mysteryOrbCount => MysteryOrbConfig.getOrbCount(state.letterRound);
+  int get _mysteryOrbCount => isPractice
+      ? PracticeConfig.orbCountFor(state.categoryIndex)
+      : MysteryOrbConfig.getOrbCount(state.letterRound);
 
   // Mystery outcome probabilities from constants
   static const Map<MysteryOutcome, int> _mysteryOutcomeProbabilities = {
@@ -72,6 +96,7 @@ class GameCubit extends Cubit<GameState> {
 
     // Track game resume
     AnalyticsService.instance.logGameStart(isNewGame: false);
+    _run++;
 
     _initializeLetters();
 
@@ -104,6 +129,8 @@ class GameCubit extends Cubit<GameState> {
       lastStarThreshold: progress.lastStarThreshold,
       showStarEarnedAnimation: false,
       starsEarnedThisRound: 0,
+      isPaused: false,
+      isStuck: false,
     ));
   }
 
@@ -114,6 +141,7 @@ class GameCubit extends Cubit<GameState> {
 
     // Track game start
     AnalyticsService.instance.logGameStart(isNewGame: true);
+    _run++;
 
     _initializeLetters();
     emit(state.copyWith(
@@ -148,7 +176,38 @@ class GameCubit extends Cubit<GameState> {
       lastStarThreshold: 0,
       showStarEarnedAnimation: false,
       starsEarnedThisRound: 0,
+      isPaused: false,
+      isStuck: false,
     ));
+  }
+
+  /// Start the scripted practice round - straight to the spinning wheel
+  void startPractice() {
+    _run++;
+    _timer?.cancel();
+    _hintTimer?.cancel();
+    _timerHeld = false;
+    _resetStuckTracking();
+    emit(GameState(
+      letters: _generateLetterNodes(),
+      phase: GamePhase.spinningWheel,
+      timeRemaining: GameConfig.startingTime,
+      hintsRemaining: GameConfig.startingHints,
+      stars: StarConfig.startingStars,
+    ));
+  }
+
+  /// Letter the wheel must land on (practice only)
+  String? get forcedWheelLetter => isPractice ? PracticeConfig.letter : null;
+
+  /// Restart from scratch - a brand new run, nothing carried over
+  void restart() {
+    if (isPractice) {
+      startPractice();
+    } else {
+      resetGame();
+      startGame();
+    }
   }
 
   /// Save game progress for later resumption
@@ -159,6 +218,7 @@ class GameCubit extends Cubit<GameState> {
     required int timeRemaining,
     required int hintsRemaining,
   }) async {
+    if (isPractice) return;
     await StorageService.instance.saveGameProgress(
       letterRound: letterRound,
       completedLetters: completedLetters,
@@ -174,15 +234,39 @@ class GameCubit extends Cubit<GameState> {
   /// Start the countdown timer
   void _startTimer() {
     _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (state.timeRemaining > 0) {
-        final newTime = state.timeRemaining - 1;
-        emit(state.copyWith(timeRemaining: newTime));
-        _playTimeWarning(newTime);
-      } else {
-        _endGame(isWinner: false);
-      }
-    });
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
+  }
+
+  void _tick() {
+    // Paused (board hidden) or held by an overlay - the clock stands still
+    if (state.isPaused || _timerHeld) return;
+
+    if (state.timeRemaining > 0) {
+      final newTime = state.timeRemaining - 1;
+      if (state.phase == GamePhase.playingRound) _secondsOnCategory++;
+      emit(state.copyWith(timeRemaining: newTime, isStuck: _looksStuck));
+      _playTimeWarning(newTime);
+    } else {
+      _endGame(isWinner: false);
+    }
+  }
+
+  /// Hold or release the clock without showing the pause menu
+  /// (tutorial coach marks, blocking modals).
+  void setTimerHeld(bool held) {
+    _timerHeld = held;
+  }
+
+  /// Player has been on this category a while, or keeps missing
+  bool get _looksStuck =>
+      state.phase == GamePhase.playingRound &&
+      state.hintWord == null &&
+      (_secondsOnCategory >= HintConfig.stuckAfterSeconds ||
+          _wrongAttemptsOnCategory >= HintConfig.stuckAfterWrongAttempts);
+
+  void _resetStuckTracking() {
+    _secondsOnCategory = 0;
+    _wrongAttemptsOnCategory = 0;
   }
 
   /// Clock tick for the final seconds - speeds up the heart rate a little
@@ -203,15 +287,23 @@ class GameCubit extends Cubit<GameState> {
     final upperLetter = letter.toUpperCase();
 
     // Get 5 random categories that have words for this letter
-    final categories = _get5RandomCategoriesForLetter(upperLetter);
+    // (practice uses its scripted set so the coach's examples are valid)
+    final categories = isPractice && _practiceCategoriesValid(upperLetter)
+        ? PracticeConfig.categories
+        : _get5RandomCategoriesForLetter(upperLetter);
+
+    _letterStartTime = state.timeRemaining;
+    _letterStartHints = state.hintsRemaining;
 
     // Track letter started
-    AnalyticsService.instance.logLetterStarted(
-      letter: upperLetter,
-      letterRound: state.letterRound,
-      timeRemaining: state.timeRemaining,
-      currentScore: state.score,
-    );
+    if (!isPractice) {
+      AnalyticsService.instance.logLetterStarted(
+        letter: upperLetter,
+        letterRound: state.letterRound,
+        timeRemaining: state.timeRemaining,
+        currentScore: state.score,
+      );
+    }
 
     emit(state.copyWith(
       currentLetter: upperLetter,
@@ -227,6 +319,9 @@ class GameCubit extends Cubit<GameState> {
     // Start timer when wheel lands (every round)
     _startTimer();
   }
+
+  bool _practiceCategoriesValid(String letter) => PracticeConfig.categories
+      .every((c) => _dictionary.categoryHasWordsForLetter(c, letter));
 
   /// Called when category jackpot animation completes
   void onCategoryRevealed() {
@@ -244,6 +339,8 @@ class GameCubit extends Cubit<GameState> {
     _pendingLetterEnteredAt = null;
     _lastDragPosition = null;
     _lastDragTime = null;
+    _hintTimer?.cancel();
+    _resetStuckTracking();
 
     emit(state.copyWith(
       phase: GamePhase.playingRound,
@@ -256,7 +353,43 @@ class GameCubit extends Cubit<GameState> {
       isDragging: false, // Ensure clean drag state for new category
       clearDragPosition: true,
       approachingLetterIds: [],
+      clearHintWord: true, // A hint from the last category points at old positions
+      isStuck: false,
+      previewPaths: const [],
     ));
+    // Paths are computed against the freshly placed stars
+    emit(state.copyWith(previewPaths: _pickPreviewPaths()));
+  }
+
+  /// Star paths for a few valid answers, shimmered as the category begins
+  List<List<int>> _pickPreviewPaths() {
+    final letter = state.currentLetter;
+    if (letter == null) return const [];
+
+    final lettersOnly = RegExp(r'^[A-Z ]+$');
+    final candidates = _dictionary
+        .getWordsForCategoryAndLetter(state.category, letter)
+        .map((w) => w.toUpperCase())
+        .where((w) =>
+            lettersOnly.hasMatch(w) &&
+            w.replaceAll(' ', '').length <= WordPreviewConfig.maxLetters)
+        .toList()
+      ..shuffle(_random);
+
+    // Practice: the coach's example word always shimmers first
+    if (isPractice && state.categoryIndex < PracticeConfig.exampleWords.length) {
+      final example = PracticeConfig.exampleWords[state.categoryIndex];
+      if (candidates.remove(example)) candidates.insert(0, example);
+    }
+
+    final paths = <List<int>>[];
+    for (final word in candidates) {
+      if (paths.length >= WordPreviewConfig.wordCount) break;
+      final path = _computeHintLetterSequence(word);
+      // Only words the board can fully spell
+      if (path.length == word.replaceAll(' ', '').length) paths.add(path);
+    }
+    return paths;
   }
 
   /// Get all unique letters needed for valid words in this category/letter round
@@ -386,8 +519,8 @@ class GameCubit extends Cubit<GameState> {
     final availableHeight = maxY - paddingY;
     final cellWidth = availableWidth / cols;
     final cellHeight = availableHeight / rows;
-    final jitterX = cellWidth * 0.20;
-    final jitterY = cellHeight * 0.20;
+    final jitterX = cellWidth * LayoutConfig.positionJitter;
+    final jitterY = cellHeight * LayoutConfig.positionJitter;
 
     final gridPositions = <Offset>[];
     for (int row = 0; row < rows; row++) {
@@ -436,7 +569,7 @@ class GameCubit extends Cubit<GameState> {
     const iterations = 12;
     const corridorWidth = 0.08; // How wide the "clear zone" should be
     const pushStrength = 0.025;
-    const minSpacing = 0.09; // Minimum distance between any two letters
+    const minSpacing = LayoutConfig.minStarSpacing; // Minimum distance between any two stars
 
     for (int iter = 0; iter < iterations; iter++) {
       final newPositions = <String, Offset>{};
@@ -1438,6 +1571,7 @@ class GameCubit extends Cubit<GameState> {
     categoryHints.add(hintWord.toUpperCase());
     updatedUsedHints[state.category] = categoryHints;
 
+    _resetStuckTracking();
     emit(state.copyWith(
       hintsRemaining: state.hintsRemaining - 1,
       hintWord: hintWord,
@@ -1445,6 +1579,7 @@ class GameCubit extends Cubit<GameState> {
       hintAnimationIndex: 0,
       timeRemaining: newTime,
       usedHintWords: updatedUsedHints,
+      isStuck: false,
     ));
 
     // Animate through the sequence with delays
@@ -1466,36 +1601,65 @@ class GameCubit extends Cubit<GameState> {
       );
       if (node.id >= 0) {
         sequence.add(node.id);
+        continue;
       }
+      // Letter was swapped for a mystery orb - the orb is the path
+      final orb = state.mysteryOrbs.firstWhere(
+        (o) => o.isActive && o.replacedLetter == char,
+        orElse: () => const MysteryOrb(id: -1, position: Offset.zero),
+      );
+      if (orb.id >= 0) sequence.add(orb.id);
     }
 
     return sequence;
   }
 
+  /// Free, cost-less path preview used by the practice coach
+  void showGuidedPath(String word) {
+    if (state.phase != GamePhase.playingRound) return;
+    final ids = _computeHintLetterSequence(word);
+    if (ids.isEmpty) return;
+    emit(state.copyWith(
+      hintWord: word,
+      hintLetterIds: ids,
+      hintAnimationIndex: 0,
+    ));
+    _animateHintSequence(ids.length);
+  }
+
   /// Animate through the hint sequence, highlighting letters one by one
+  /// Steps freeze while paused so a paid hint is never wasted behind the
+  /// pause screen.
   void _animateHintSequence(int totalLetters) {
-    const delayPerLetter = Duration(milliseconds: AnimationConfig.hintLetterRevealDelay);
-    final totalDuration = delayPerLetter * totalLetters + const Duration(milliseconds: AnimationConfig.hintCompletionBuffer);
+    _hintTimer?.cancel();
+    const holdSteps = (AnimationConfig.hintCompletionBuffer + AnimationConfig.hintLetterRevealDelay - 1) ~/
+        AnimationConfig.hintLetterRevealDelay;
+    var step = 0;
 
-    // Advance through each letter in sequence
-    for (int i = 1; i <= totalLetters; i++) {
-      Future.delayed(delayPerLetter * i, () {
-        if (isClosed) return;
-        if (state.hintWord == null) return; // Hint was cleared
-        AudioService.instance.playSnap(i, volume: 0.45);
-        emit(state.copyWith(hintAnimationIndex: i));
-      });
-    }
+    _hintTimer = Timer.periodic(
+      const Duration(milliseconds: AnimationConfig.hintLetterRevealDelay),
+      (timer) {
+        if (isClosed || state.hintWord == null) {
+          timer.cancel(); // Hint was cleared
+          return;
+        }
+        if (state.isPaused) return;
 
-    // Clear the hint after full animation
-    Future.delayed(totalDuration, () {
-      if (isClosed) return;
-      emit(state.copyWith(clearHintWord: true));
-    });
+        step++;
+        if (step <= totalLetters) {
+          AudioService.instance.playSnap(step, volume: 0.45);
+          emit(state.copyWith(hintAnimationIndex: step));
+        } else if (step >= totalLetters + holdSteps) {
+          timer.cancel();
+          emit(state.copyWith(clearHintWord: true));
+        }
+      },
+    );
   }
 
   /// Clear the hint word (called after animation)
   void clearHint() {
+    _hintTimer?.cancel();
     emit(state.copyWith(clearHintWord: true));
   }
 
@@ -1867,6 +2031,7 @@ class GameCubit extends Cubit<GameState> {
 
     // First emit celebration state - keep letters visible for animation
     // Show connection animation if this was a pure connection
+    _resetStuckTracking();
     emit(state.copyWith(
       score: newScore,
       timeRemaining: newTime,
@@ -1876,14 +2041,17 @@ class GameCubit extends Cubit<GameState> {
       scoreMultiplierActive: false,
       showConnectionAnimation: wasPureConnection,
       isPureConnection: false,
+      isStuck: false,
     ));
 
     // Delay transition to allow celebration animation to play
     final celebrationDelay = wasPureConnection
         ? AnimationConfig.pureConnectionCelebrationDelay
         : AnimationConfig.normalCelebrationDelay;
+    final run = _run;
     Future.delayed(Duration(milliseconds: celebrationDelay), () {
       if (isClosed) return; // Guard against cubit being closed
+      if (run != _run) return; // Player restarted during the celebration
 
       // Check if we completed all 5 categories for this letter
       if (nextCategoryIndex >= GameState.categoriesPerLetter) {
@@ -1920,13 +2088,15 @@ class GameCubit extends Cubit<GameState> {
     final newCompletedLetters = [...state.completedLetters, state.currentLetter!];
 
     // Track letter completion
-    AnalyticsService.instance.logLetterCompleted(
-      letter: state.currentLetter!,
-      letterRound: state.letterRound,
-      pointsEarned: state.pointsEarnedInRound,
-      timeRemaining: state.timeRemaining,
-      totalScore: newScore,
-    );
+    if (!isPractice) {
+      AnalyticsService.instance.logLetterCompleted(
+        letter: state.currentLetter!,
+        letterRound: state.letterRound,
+        pointsEarned: state.pointsEarnedInRound,
+        timeRemaining: state.timeRemaining,
+        totalScore: newScore,
+      );
+    }
 
     // Check if all letters completed (A-Y, no X)
     if (newCompletedLetters.length >= GameConfig.totalLetters) {
@@ -2150,6 +2320,8 @@ class GameCubit extends Cubit<GameState> {
     // Deduct time penalty for wrong answer
     final newTime = (state.timeRemaining - TimeConfig.wrongAnswerPenalty).clamp(0, 999);
 
+    _wrongAttemptsOnCategory++;
+
     // Only clear current selection, keep banked words (committedWord) safe
     emit(state.copyWith(
       timeRemaining: newTime,
@@ -2159,6 +2331,7 @@ class GameCubit extends Cubit<GameState> {
       // Don't reset spaceUsageCount - banked spaces are still valid
       repeatUsageCount: 0, // Only reset repeat count for current selection
       isPureConnection: false, // Reset for next attempt
+      isStuck: _looksStuck,
     ));
 
     if (newTime <= 0) {
@@ -2173,13 +2346,15 @@ class GameCubit extends Cubit<GameState> {
     final score = finalScore ?? state.score;
 
     // Track game completion
-    AnalyticsService.instance.logGameComplete(
-      isWinner: isWinner,
-      finalScore: score,
-      lettersCompleted: state.completedLetters.length,
-      totalTimePlayedSeconds: GameConfig.startingTime - state.timeRemaining,
-      starsEarned: state.starsEarnedThisGame,
-    );
+    if (!isPractice) {
+      AnalyticsService.instance.logGameComplete(
+        isWinner: isWinner,
+        finalScore: score,
+        lettersCompleted: state.completedLetters.length,
+        totalTimePlayedSeconds: GameConfig.startingTime - state.timeRemaining,
+        starsEarned: state.starsEarnedThisGame,
+      );
+    }
 
     // Audio and haptic feedback for game end
     AudioService.instance.duckMusic(const Duration(seconds: 4));
@@ -2191,17 +2366,31 @@ class GameCubit extends Cubit<GameState> {
       HapticService.instance.warning();
     }
 
-    // Clear saved progress - game is over
-    StorageService.instance.clearGameProgress();
+    if (!isPractice) {
+      // Clear saved progress - game is over
+      StorageService.instance.clearGameProgress();
 
-    // Save game session to local storage
-    _saveGameSession(score, isWinner);
+      // Save game session to local storage
+      _saveGameSession(score, isWinner);
+    }
 
     emit(state.copyWith(
       isPlaying: false,
       phase: GamePhase.gameOver,
       isWinner: isWinner,
       score: score,
+      isPaused: false,
+    ));
+  }
+
+  /// Practice letter cleared - show the practice-complete screen
+  void finishPractice() {
+    _timer?.cancel();
+    emit(state.copyWith(
+      phase: GamePhase.gameOver,
+      isWinner: true,
+      isPlaying: false,
+      isPaused: false,
     ));
   }
 
@@ -2218,7 +2407,9 @@ class GameCubit extends Cubit<GameState> {
 
   /// Reset the game to initial state
   void resetGame() {
+    _run++;
     _timer?.cancel();
+    _hintTimer?.cancel();
 
     _initializeLetters();
     emit(state.copyWith(
@@ -2256,6 +2447,8 @@ class GameCubit extends Cubit<GameState> {
       lastStarThreshold: 0,
       showStarEarnedAnimation: false,
       starsEarnedThisRound: 0,
+      isPaused: false,
+      isStuck: false,
     ));
   }
 
@@ -2265,6 +2458,9 @@ class GameCubit extends Cubit<GameState> {
 
   /// Determine mystery outcome using probability weights and pity system
   MysteryOutcome _determineMysteryOutcome() {
+    // Practice introduces orbs with a guaranteed reward
+    if (isPractice) return MysteryOutcome.timeBonus;
+
     // Pity system: after consecutive penalties, guarantee a reward
     if (state.consecutivePenalties >= MysteryOrbConfig.pityThreshold) {
       // Force a reward
@@ -2452,6 +2648,8 @@ class GameCubit extends Cubit<GameState> {
   /// Stores the current timestamp and pauses the timer
   void onAppPaused() {
     if (!state.isPlaying) return; // Only track if actively playing
+    _persistMidLetterProgress(); // App may be killed in the background
+    if (state.isPaused) return; // Clock is already stopped
 
     _backgroundedAt = DateTime.now();
     _timer?.cancel();
@@ -2488,9 +2686,80 @@ class GameCubit extends Cubit<GameState> {
     }
   }
 
+  // ============================================
+  // PAUSE
+  // ============================================
+
+  /// Phases where the pause menu is available
+  bool get canPause =>
+      !state.isPaused &&
+      (state.phase == GamePhase.spinningWheel ||
+          state.phase == GamePhase.categoryReveal ||
+          state.phase == GamePhase.playingRound);
+
+  /// Stop the clock and hide the board. Any drag in progress is dropped so
+  /// nothing can be selected while the board is hidden.
+  /// Returns false if pausing isn't possible right now.
+  bool pauseGame() {
+    if (!canPause) return false;
+
+    _pendingLetterId = null;
+    _pendingLetterEnteredAt = null;
+    _lastDragPosition = null;
+    _lastDragTime = null;
+
+    emit(state.copyWith(
+      isPaused: true,
+      isDragging: false,
+      clearDragPosition: true,
+      approachingLetterIds: [],
+      clearPendingLetterId: true,
+      clearLetterDwellStartTime: true,
+      clearPendingMysteryOrb: true,
+      clearMysteryOrbDwellStartTime: true,
+    ));
+    _persistMidLetterProgress();
+    return true;
+  }
+
+  /// Unpause - the clock picks up exactly where it stopped
+  void resumeFromPause() {
+    if (!state.isPaused) return;
+    emit(state.copyWith(isPaused: false));
+  }
+
+  /// Leaving for the menu mid-letter. Progress is checkpointed so resuming
+  /// later can't refund time or hints spent on this letter.
+  void quitToMenu() {
+    _persistMidLetterProgress();
+    _timer?.cancel();
+  }
+
+  /// Resume restarts the current letter from the wheel, so the save must
+  /// never hold more than the letter started with: score from the start of
+  /// the letter, and the lower of start/current time and hints. Stars are
+  /// saved as they are now so spent skips stay spent.
+  void _persistMidLetterProgress() {
+    if (isPractice) return;
+    if (state.completedLetters.isEmpty) return; // No checkpoint exists yet
+    if (state.phase != GamePhase.categoryReveal &&
+        state.phase != GamePhase.playingRound) {
+      return;
+    }
+
+    _saveProgress(
+      letterRound: state.letterRound,
+      completedLetters: state.completedLetters,
+      score: state.letterRoundStartScore,
+      timeRemaining: min(state.timeRemaining, _letterStartTime ?? state.timeRemaining),
+      hintsRemaining: min(state.hintsRemaining, _letterStartHints ?? state.hintsRemaining),
+    );
+  }
+
   @override
   Future<void> close() {
     _timer?.cancel();
+    _hintTimer?.cancel();
     return super.close();
   }
 }

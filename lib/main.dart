@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:constellation_app/app/router.dart';
 import 'package:constellation_app/shared/services/services.dart';
 import 'package:constellation_app/shared/theme/theme.dart';
+import 'package:constellation_app/shared/widgets/mobile_frame.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -46,6 +47,8 @@ class ConstellationApp extends StatelessWidget {
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.dark,
       routerConfig: router,
+      // Laptops and large screens get a centered phone-sized frame
+      builder: (context, child) => MobileFrame(child: child ?? const SizedBox.shrink()),
     );
   }
 }

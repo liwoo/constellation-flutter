@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:constellation_app/shared/constants/constants.dart';
+import 'package:constellation_app/shared/services/services.dart';
 import 'package:constellation_app/shared/widgets/widgets.dart';
 import 'package:constellation_app/game/cubit/game_cubit.dart';
 import 'package:constellation_app/game/widgets/connection_painter.dart';
+import 'package:constellation_app/game/widgets/star_shimmer.dart';
 
 class LetterConstellation extends StatefulWidget {
   const LetterConstellation({
@@ -28,6 +30,9 @@ class LetterConstellation extends StatefulWidget {
     this.lastConnectedLetterId,
     // Pure connection celebration
     this.showConnectionAnimation = false,
+    // Round-start shimmer
+    this.shimmerPaths = const [],
+    this.shimmerPaused = false,
   });
 
   final List<LetterNode> letters;
@@ -55,14 +60,23 @@ class LetterConstellation extends StatefulWidget {
   // Pure connection celebration
   final bool showConnectionAnimation; // Trigger path celebration animation
 
+  // Round-start shimmer: star paths of a few answers, traced once, quickly
+  final List<List<int>> shimmerPaths;
+  final bool shimmerPaused; // Hold the shimmer while the board is hidden
+
   @override
   State<LetterConstellation> createState() => _LetterConstellationState();
 }
 
 class _LetterConstellationState extends State<LetterConstellation>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late AnimationController _celebrationController;
   late Animation<double> _celebrationAnimation;
+
+  // Round-start shimmer
+  late final AnimationController _shimmerController =
+      AnimationController(vsync: this)..addListener(_shimmerChime);
+  String _lastChime = '';
 
   @override
   void initState() {
@@ -73,6 +87,51 @@ class _LetterConstellationState extends State<LetterConstellation>
     );
     _celebrationAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _celebrationController, curve: Curves.easeInOut),
+    );
+    _startShimmer();
+  }
+
+  /// Identity of a set of shimmer paths (new category = new shimmer)
+  static String _shimmerKey(List<List<int>> paths) =>
+      paths.map((p) => p.join(',')).join('|');
+
+  int get _shimmerTotalMs => WordPreviewConfig.totalMs(widget.shimmerPaths);
+
+  void _startShimmer() {
+    _lastChime = '';
+    _shimmerController.stop();
+    if (widget.shimmerPaths.isEmpty) {
+      _shimmerController.value = 1;
+      return;
+    }
+    _shimmerController
+      ..duration = Duration(milliseconds: _shimmerTotalMs)
+      ..value = 0;
+    if (!widget.shimmerPaused) _shimmerController.forward();
+  }
+
+  ShimmerFrame? get _shimmerFrame {
+    if (!_shimmerController.isAnimating && _shimmerController.value == 0) {
+      return null; // Waiting for the pause screen to close
+    }
+    return ShimmerFrame.at(
+      widget.shimmerPaths,
+      _shimmerController.value * _shimmerTotalMs,
+    );
+  }
+
+  /// Faint rising twinkle as each star lights
+  void _shimmerChime() {
+    final frame = _shimmerFrame;
+    if (frame == null || frame.fade < 1) return;
+    final key = '${identityHashCode(frame.path)}-${frame.headIndex}';
+    if (key == _lastChime) return;
+    _lastChime = key;
+    AudioService.instance.play(
+      GameSound.counterTick,
+      volume: 0.9,
+      rate: 1.2 + frame.headIndex * 0.12,
+      minInterval: Duration.zero,
     );
   }
 
@@ -85,10 +144,21 @@ class _LetterConstellationState extends State<LetterConstellation>
     } else if (!widget.showConnectionAnimation && oldWidget.showConnectionAnimation) {
       _celebrationController.reset();
     }
+
+    if (_shimmerKey(widget.shimmerPaths) != _shimmerKey(oldWidget.shimmerPaths)) {
+      _startShimmer();
+    } else if (widget.shimmerPaused != oldWidget.shimmerPaused) {
+      if (widget.shimmerPaused) {
+        _shimmerController.stop();
+      } else if (_shimmerController.value < 1 && widget.shimmerPaths.isNotEmpty) {
+        _shimmerController.forward();
+      }
+    }
   }
 
   @override
   void dispose() {
+    _shimmerController.dispose();
     _celebrationController.dispose();
     super.dispose();
   }
@@ -121,6 +191,15 @@ class _LetterConstellationState extends State<LetterConstellation>
     return (elapsed.inMilliseconds / dwellDuration.inMilliseconds).clamp(0.0, 1.0);
   }
 
+  /// While a hint plays, everything outside the hinted word fades back
+  bool get _isHintActive => widget.hintLetterIds.isNotEmpty;
+
+  /// Opacity for a star/orb - dimmed if a hint is showing a different word
+  double _hintFocusOpacity(int id) {
+    if (!_isHintActive) return 1.0;
+    return widget.hintLetterIds.contains(id) ? 1.0 : 0.15;
+  }
+
   /// Calculate bubble size based on device screen size (not container)
   /// This ensures letters don't shrink when word display area changes
   double _calculateBubbleSize(BuildContext context) {
@@ -129,11 +208,11 @@ class _LetterConstellationState extends State<LetterConstellation>
         ? screenSize.width
         : screenSize.height;
 
-    // Bubble size is approximately 1/7 of the smaller screen dimension
-    final calculatedSize = minDimension / 7.5;
+    // Sized so a full 26-star board still leaves clear space between stars
+    final calculatedSize = minDimension * LayoutConfig.starSizeFraction;
 
     // Clamp to reasonable bounds
-    return calculatedSize.clamp(36.0, 70.0);
+    return calculatedSize.clamp(LayoutConfig.minStarSize, LayoutConfig.maxStarSize);
   }
 
   @override
@@ -166,6 +245,31 @@ class _LetterConstellationState extends State<LetterConstellation>
                   return letter.position;
                 })
                 .toList();
+
+            // Star centres in pixels, for the round-start shimmer
+            final starCenters = <int, Offset>{
+              for (final l in widget.letters)
+                l.id: Offset(l.position.dx * containerSize.width, l.position.dy * containerSize.height),
+              for (final o in widget.mysteryOrbs)
+                if (o.isActive)
+                  o.id: Offset(o.position.dx * containerSize.width, o.position.dy * containerSize.height),
+            };
+
+            Widget shimmerLayer({required bool front}) => Positioned.fill(
+                  child: IgnorePointer(
+                    child: AnimatedBuilder(
+                      animation: _shimmerController,
+                      builder: (context, _) => CustomPaint(
+                        painter: StarShimmerPainter(
+                          frame: _shimmerFrame,
+                          centers: starCenters,
+                          starSize: bubbleSize,
+                          front: front,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
 
             return GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -212,6 +316,9 @@ class _LetterConstellationState extends State<LetterConstellation>
                     ),
                   ),
 
+                  // Shimmer halo + trace, behind the stars
+                  shimmerLayer(front: false),
+
                   // Mystery orbs - rendered as part of constellation (same size as letters)
                   ...widget.mysteryOrbs.map((orb) {
                     final x = orb.position.dx * constraints.maxWidth;
@@ -223,11 +330,15 @@ class _LetterConstellationState extends State<LetterConstellation>
                       left: x - (bubbleSize / 2),
                       top: y - (bubbleSize / 2),
                       child: IgnorePointer(
-                        child: MysteryOrbWidget(
-                          size: bubbleSize, // Same size as letter bubbles
-                          isActive: orb.isActive,
-                          isApproaching: isApproaching,
-                          dwellProgress: dwellProgress,
+                        child: AnimatedOpacity(
+                          opacity: _hintFocusOpacity(orb.id),
+                          duration: const Duration(milliseconds: 250),
+                          child: MysteryOrbWidget(
+                            size: bubbleSize, // Same size as letter bubbles
+                            isActive: orb.isActive,
+                            isApproaching: isApproaching,
+                            dwellProgress: dwellProgress,
+                          ),
                         ),
                       ),
                     );
@@ -249,21 +360,27 @@ class _LetterConstellationState extends State<LetterConstellation>
                       left: x - (bubbleSize / 2),
                       top: y - (bubbleSize / 2),
                       child: IgnorePointer(
-                        child: LetterBubble(
-                          letter: letter.letter,
-                          points: letter.points,
-                          isSelected: isSelected,
-                          isStartingLetter: isStarting,
-                          isHintLetter: isHint,
-                          isApproaching: isApproaching,
-                          dwellProgress: dwellProgress,
-                          justConnected: justConnected,
-                          size: bubbleSize,
+                        child: AnimatedOpacity(
+                          opacity: _hintFocusOpacity(letter.id),
+                          duration: const Duration(milliseconds: 250),
+                          child: LetterBubble(
+                            letter: letter.letter,
+                            points: letter.points,
+                            isSelected: isSelected,
+                            isStartingLetter: isStarting && !_isHintActive,
+                            isHintLetter: isHint,
+                            isApproaching: isApproaching,
+                            dwellProgress: dwellProgress,
+                            justConnected: justConnected,
+                            size: bubbleSize,
+                          ),
                         ),
                       ),
                     );
                   }),
 
+                  // Shimmer rings + sparkles, over the stars
+                  shimmerLayer(front: true),
                 ],
               ),
             );

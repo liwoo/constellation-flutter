@@ -123,6 +123,46 @@ class HintConfig {
 
   /// Round threshold below which we always pick the shortest word
   static const int preferShortestRoundThreshold = 10;
+
+  /// Seconds of play on one category without solving it before the
+  /// hint button starts pulsing
+  static const int stuckAfterSeconds = 20;
+
+  /// Wrong submissions on one category before the hint button pulses
+  static const int stuckAfterWrongAttempts = 2;
+}
+
+/// When each category begins, the stars of a few valid answers shimmer in
+/// spelling order and vanish almost at once - a free hint for quick eyes
+class WordPreviewConfig {
+  const WordPreviewConfig._();
+
+  /// How many answers shimmer
+  static const int wordCount = 3;
+
+  /// Longest answer (letters, spaces excluded) worth tracing
+  static const int maxLetters = 8;
+
+  /// Sweep moves on to the next star (milliseconds)
+  static const int starStepMs = 90;
+
+  /// Whole word stays lit (milliseconds)
+  static const int holdMs = 180;
+
+  /// Word fades away (milliseconds)
+  static const int fadeMs = 220;
+
+  /// Pause between words (milliseconds)
+  static const int gapMs = 140;
+
+  /// Time to shimmer one word of [stars] stars
+  static int wordMs(int stars) => stars * starStepMs + holdMs + fadeMs;
+
+  /// Time to shimmer every path, gaps included
+  static int totalMs(List<List<int>> paths) => paths.isEmpty
+      ? 0
+      : paths.fold<int>(0, (sum, p) => sum + wordMs(p.length)) +
+          gapMs * (paths.length - 1);
 }
 
 /// Animation duration configuration (milliseconds)
@@ -265,7 +305,17 @@ class LayoutConfig {
   static const double gridAvailableHeight = 0.84;
 
   /// Jitter amount for letter positions (as fraction of cell size)
-  static const double positionJitter = 0.20;
+  static const double positionJitter = 0.12;
+
+  /// Minimum distance between any two stars (relative 0-1)
+  static const double minStarSpacing = 0.12;
+
+  /// Star diameter as a fraction of the smaller screen dimension
+  static const double starSizeFraction = 1 / 9.5;
+
+  /// Star diameter bounds (logical pixels)
+  static const double minStarSize = 32;
+  static const double maxStarSize = 54;
 
   /// QWERTY layout configuration
   static const double qwertyPaddingX = 0.05;
@@ -273,4 +323,34 @@ class LayoutConfig {
   static const double qwertyRowSpacing = 0.20;
   static const double qwertyRow2Indent = 0.04;
   static const double qwertyRow3Indent = 0.12;
+}
+
+/// Scripted practice round: one letter, five categories, each chosen to
+/// teach one mechanic of the real game.
+class PracticeConfig {
+  const PracticeConfig._();
+
+  /// The wheel always lands here so the script's example words work
+  static const String letter = 'C';
+
+  /// Categories in play order (names match the category JSON files)
+  static const List<String> categories = [
+    'ANIMALS', // drag + GO
+    'TRANSPORTATION', // space between words
+    'BEVERAGES', // x2 for double letters
+    'COLORS', // hints
+    'FOOD & DRINK', // mystery orb
+  ];
+
+  /// Example answer suggested by the coach for each category
+  static const List<String> exampleWords = [
+    'CAT',
+    'CABLE CAR',
+    'COFFEE',
+    'CYAN',
+    'CAKE',
+  ];
+
+  /// Mystery orbs per category - only the last one introduces them
+  static int orbCountFor(int categoryIndex) => categoryIndex == 4 ? 1 : 0;
 }

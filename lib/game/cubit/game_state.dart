@@ -147,6 +147,10 @@ class GameState extends Equatable {
     this.lastStarThreshold = 0, // Last score threshold crossed for star award
     this.showStarEarnedAnimation = false, // Trigger star earned animation
     this.starsEarnedThisRound = 0, // Stars earned this letter round (for end-of-round celebration)
+    // Pause / assistance
+    this.isPaused = false, // Player paused - clock stopped, board hidden
+    this.isStuck = false, // Player looks stuck - hint button pulses
+    this.previewPaths = const [], // Star paths of answers that shimmer as a category begins
   });
 
   /// Special ID for space character in selectedLetterIds
@@ -222,6 +226,11 @@ class GameState extends Equatable {
   final int lastStarThreshold; // Last score threshold crossed for star award
   final bool showStarEarnedAnimation; // Trigger star earned animation
   final int starsEarnedThisRound; // Stars earned this letter round (for end-of-round celebration)
+
+  // Pause / assistance
+  final bool isPaused; // Player paused - clock stopped, board hidden
+  final bool isStuck; // Player looks stuck - hint button pulses
+  final List<List<int>> previewPaths; // Star paths of answers that shimmer as a category begins
 
   /// Points earned in current letter round
   int get pointsEarnedInRound => score - letterRoundStartScore;
@@ -326,6 +335,9 @@ class GameState extends Equatable {
         lastStarThreshold,
         showStarEarnedAnimation,
         starsEarnedThisRound,
+        isPaused,
+        isStuck,
+        previewPaths,
       ];
 
   GameState copyWith({
@@ -387,6 +399,9 @@ class GameState extends Equatable {
     int? lastStarThreshold,
     bool? showStarEarnedAnimation,
     int? starsEarnedThisRound,
+    bool? isPaused,
+    bool? isStuck,
+    List<List<int>>? previewPaths,
   }) {
     return GameState(
       letters: letters ?? this.letters,
@@ -435,6 +450,9 @@ class GameState extends Equatable {
       lastStarThreshold: lastStarThreshold ?? this.lastStarThreshold,
       showStarEarnedAnimation: showStarEarnedAnimation ?? this.showStarEarnedAnimation,
       starsEarnedThisRound: starsEarnedThisRound ?? this.starsEarnedThisRound,
+      isPaused: isPaused ?? this.isPaused,
+      isStuck: isStuck ?? this.isStuck,
+      previewPaths: previewPaths ?? this.previewPaths,
     );
   }
 }

@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:constellation_app/game/cubit/game_cubit.dart';
+import 'package:constellation_app/game/widgets/game_body.dart';
 import 'package:constellation_app/practice/cubit/cubit.dart';
-import 'package:constellation_app/practice/widgets/practice_body.dart';
+import 'package:constellation_app/practice/widgets/coach_mark_overlay.dart';
 
 /// {@template practice_page}
-/// A description for PracticePage
+/// Practice: one scripted letter of the real game, with coach marks that
+/// pause to show which buttons to press.
 /// {@endtemplate}
 class PracticePage extends StatelessWidget {
   /// {@macro practice_page}
@@ -17,16 +20,19 @@ class PracticePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (context) => PracticeCubit(),
-      child: const Scaffold(
-        body: PracticeView(),
+      create: (context) => GameCubit(isPractice: true)..startPractice(),
+      child: BlocProvider(
+        create: (context) => TutorialCubit(context.read<GameCubit>()),
+        child: const Scaffold(
+          body: PracticeView(),
+        ),
       ),
     );
-  }    
+  }
 }
 
 /// {@template practice_view}
-/// Displays the Body of PracticeView
+/// The real game screen with the practice coach on top
 /// {@endtemplate}
 class PracticeView extends StatelessWidget {
   /// {@macro practice_view}
@@ -34,6 +40,8 @@ class PracticeView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const PracticeBody();
+    return GameBody(
+      tutorialOverlayBuilder: (targets) => CoachMarkOverlay(targets: targets),
+    );
   }
 }
