@@ -31,6 +31,7 @@ Short, latency-critical sounds are **WAV** (no decoder delay). Longer ones are
 | `hint.mp3` | Hint used |
 | `mystery_activate.mp3` / `mystery_reward.mp3` / `mystery_penalty.wav` | Mystery orbs |
 | `star_earned.mp3` | Star earned / final round hype |
+| `shooting_star.mp3` / `shooting_star_catch.mp3` | Shooting star streaks onto the board / its bonus is caught |
 | `round_complete.mp3` | Letter complete, practice session complete |
 | `game_win.mp3` / `game_lose.mp3` | Game over |
 | `music_ambient.mp3` | Soothing background loop (see below) |

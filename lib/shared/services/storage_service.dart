@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:constellation_app/shared/constants/constants.dart';
 import 'package:constellation_app/shared/models/models.dart';
 
 /// Represents saved game progress for resuming
@@ -13,6 +14,7 @@ class SavedGameProgress {
   final int stars;
   final int lastStarThreshold;
   final int starsEarnedThisGame;
+  final int lives;
   final DateTime savedAt;
 
   const SavedGameProgress({
@@ -24,6 +26,7 @@ class SavedGameProgress {
     required this.stars,
     required this.lastStarThreshold,
     required this.starsEarnedThisGame,
+    required this.lives,
     required this.savedAt,
   });
 
@@ -36,6 +39,7 @@ class SavedGameProgress {
         'stars': stars,
         'lastStarThreshold': lastStarThreshold,
         'starsEarnedThisGame': starsEarnedThisGame,
+        'lives': lives,
         'savedAt': savedAt.toIso8601String(),
       };
 
@@ -54,6 +58,8 @@ class SavedGameProgress {
       stars: json['stars'] as int? ?? (2 + defaultEarnedStars),
       lastStarThreshold: json['lastStarThreshold'] as int? ?? defaultThreshold,
       starsEarnedThisGame: json['starsEarnedThisGame'] as int? ?? defaultEarnedStars,
+      // Saves from before lives existed get a full set
+      lives: json['lives'] as int? ?? LivesConfig.startingLives,
       savedAt: DateTime.parse(json['savedAt'] as String),
     );
   }
@@ -186,6 +192,7 @@ class StorageService {
     required int stars,
     required int lastStarThreshold,
     required int starsEarnedThisGame,
+    required int lives,
   }) async {
     await init();
 
@@ -198,6 +205,7 @@ class StorageService {
       stars: stars,
       lastStarThreshold: lastStarThreshold,
       starsEarnedThisGame: starsEarnedThisGame,
+      lives: lives,
       savedAt: DateTime.now(),
     );
 

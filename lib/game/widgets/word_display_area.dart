@@ -441,7 +441,7 @@ class _TriangleConstellationPainter extends CustomPainter {
 }
 
 /// Target letter indicator with circular progress ring
-class _TargetLetterIndicator extends StatefulWidget {
+class _TargetLetterIndicator extends StatelessWidget {
   const _TargetLetterIndicator({
     required this.letter,
     required this.size,
@@ -453,58 +453,10 @@ class _TargetLetterIndicator extends StatefulWidget {
   final DateTime? dwellStartTime;
 
   @override
-  State<_TargetLetterIndicator> createState() => _TargetLetterIndicatorState();
-}
-
-class _TargetLetterIndicatorState extends State<_TargetLetterIndicator>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _progress;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: HitDetectionConfig.dwellTimeMs),
-    );
-    _progress = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.linear),
-    );
-
-    _startFromCurrentProgress();
-  }
-
-  void _startFromCurrentProgress() {
-    if (widget.dwellStartTime != null) {
-      final elapsed = DateTime.now().difference(widget.dwellStartTime!);
-      final startProgress = (elapsed.inMilliseconds / HitDetectionConfig.dwellTimeMs).clamp(0.0, 1.0);
-      _controller.forward(from: startProgress);
-    } else {
-      _controller.forward(from: 0.0);
-    }
-  }
-
-  @override
-  void didUpdateWidget(_TargetLetterIndicator oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.letter != oldWidget.letter || widget.dwellStartTime != oldWidget.dwellStartTime) {
-      _startFromCurrentProgress();
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _progress,
-      builder: (context, child) {
-        final progress = _progress.value;
+    return DwellProgress(
+      dwellStartTime: dwellStartTime,
+      builder: (context, progress) {
         // Opacity increases from 0.5 to 1.0
         final opacity = 0.5 + (progress * 0.5);
         // Glow intensity increases with progress
@@ -513,24 +465,23 @@ class _TargetLetterIndicatorState extends State<_TargetLetterIndicator>
         return Opacity(
           opacity: opacity,
           child: SizedBox(
-            width: widget.size + 12,
-            height: widget.size + 12,
+            width: size + 12,
+            height: size + 12,
             child: Stack(
               alignment: Alignment.center,
               children: [
                 // Circular progress ring
                 CustomPaint(
-                  size: Size(widget.size + 12, widget.size + 12),
-                  painter: _DwellProgressPainter(
+                  size: Size(size + 12, size + 12),
+                  painter: DwellRingPainter(
                     progress: progress,
                     color: AppColors.accentCyan,
-                    strokeWidth: 3.0,
                   ),
                 ),
                 // Letter bubble with glow
                 Container(
-                  width: widget.size,
-                  height: widget.size,
+                  width: size,
+                  height: size,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: AppColors.primaryDarkPurple,
@@ -548,10 +499,10 @@ class _TargetLetterIndicatorState extends State<_TargetLetterIndicator>
                   ),
                   child: Center(
                     child: Text(
-                      widget.letter,
+                      letter,
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: widget.size * 0.45,
+                        fontSize: size * 0.45,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -563,62 +514,6 @@ class _TargetLetterIndicatorState extends State<_TargetLetterIndicator>
         );
       },
     );
-  }
-}
-
-/// Custom painter for circular dwell progress indicator
-class _DwellProgressPainter extends CustomPainter {
-  _DwellProgressPainter({
-    required this.progress,
-    required this.color,
-    required this.strokeWidth,
-  });
-
-  final double progress;
-  final Color color;
-  final double strokeWidth;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (progress <= 0) return;
-
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = (size.width / 2) - (strokeWidth / 2);
-
-    // Background track (subtle)
-    final trackPaint = Paint()
-      ..color = color.withAlpha(40)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round;
-
-    canvas.drawCircle(center, radius, trackPaint);
-
-    // Progress arc
-    final progressPaint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round;
-
-    // Start from top (-90 degrees) and sweep clockwise
-    const startAngle = -math.pi / 2;
-    final sweepAngle = 2 * math.pi * progress;
-
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: radius),
-      startAngle,
-      sweepAngle,
-      false,
-      progressPaint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_DwellProgressPainter oldDelegate) {
-    return oldDelegate.progress != progress ||
-        oldDelegate.color != color ||
-        oldDelegate.strokeWidth != strokeWidth;
   }
 }
 

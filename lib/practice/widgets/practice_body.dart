@@ -447,11 +447,15 @@ class PracticeBody extends StatelessWidget {
   }
 }
 
-/// The word to spell: filled slots for what's done, the next one ringed
+/// The word to spell: filled slots for what's done, the next one ringed.
+/// While a star is being held, its letter fills the slot it will land in
+/// with the same dwell ring as the game's word area.
 class _TargetWord extends StatelessWidget {
   const _TargetWord({required this.state});
 
   final PracticeState state;
+
+  static const double _slotSize = 36;
 
   @override
   Widget build(BuildContext context) {
@@ -465,18 +469,29 @@ class _TargetWord extends StatelessWidget {
     final next = state.isOnTrack ? done : -1;
     final solved = state.phase != PracticePhase.playing;
 
+    // Star being held right now, and the slot it would land in
+    final pendingId = state.pendingLetterId;
+    final pending = pendingId == null
+        ? null
+        : state.letters.where((l) => l.id == pendingId).firstOrNull?.letter;
+    final landing = pending != null && !solved && built.length < target.length
+        ? built.length
+        : -1;
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         for (var i = 0; i < target.length; i++)
           if (target[i] == ' ')
             const SizedBox(width: 16)
+          else if (i == landing)
+            _pendingSlot(pending!, correct: pending == target[i])
           else
             AnimatedContainer(
               duration: const Duration(milliseconds: 180),
               margin: const EdgeInsets.symmetric(horizontal: 3),
-              width: 36,
-              height: 36,
+              width: _slotSize,
+              height: _slotSize,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
@@ -502,6 +517,62 @@ class _TargetWord extends StatelessWidget {
               ),
             ),
       ],
+    );
+  }
+
+  /// The held star's letter in its landing slot, ringed as the dwell fills.
+  /// Pink when it's the wrong star for this slot.
+  Widget _pendingSlot(String letter, {required bool correct}) {
+    final color = correct ? AppColors.accentCyan : AppColors.accentPink;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 3),
+      child: DwellProgress(
+        dwellStartTime: state.letterDwellStartTime,
+        builder: (context, progress) => SizedBox(
+          width: _slotSize,
+          height: _slotSize,
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.center,
+            children: [
+              Positioned(
+                left: -6,
+                top: -6,
+                right: -6,
+                bottom: -6,
+                child: CustomPaint(
+                  painter: DwellRingPainter(progress: progress, color: color),
+                ),
+              ),
+              Container(
+                width: _slotSize,
+                height: _slotSize,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.primaryDarkPurple,
+                  border: Border.all(color: color, width: 2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: color.withAlpha((progress * 200).toInt()),
+                      blurRadius: 10 + progress * 8,
+                      spreadRadius: 1 + progress * 3,
+                    ),
+                  ],
+                ),
+                child: Text(
+                  letter,
+                  style: GoogleFonts.orbitron(
+                    color: Colors.white.withAlpha((140 + progress * 115).toInt()),
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

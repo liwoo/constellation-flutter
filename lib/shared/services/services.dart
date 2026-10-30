@@ -3,3 +3,4 @@ export 'audio_service.dart';
 export 'category_service.dart';
 export 'haptic_service.dart';
 export 'storage_service.dart';
+export 'store_service.dart';

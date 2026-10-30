@@ -392,6 +392,54 @@ def sfx_mystery_penalty():
     return fade_tail(x, 0.05)
 
 
+def sfx_shooting_star(tmp):
+    """Airy whoosh sweeping across the stereo field, trailing sparkles."""
+    dur = 1.1
+    t = times(dur)
+    # Band of noise whose brightness rises then falls as the star flies past
+    air = noise(dur)
+    sweep = lowpass(air, 2600) - lowpass(air, 500)
+    whoosh = sweep * np.sin(np.pi * np.clip(t / 0.9, 0, 1)) ** 2 * 2.2
+    hiss = highpass_diff(lowpass(noise(dur), 7000)) * np.sin(np.pi * np.clip(t / 0.9, 0, 1)) ** 3 * 0.5
+    # Whistle gliding down, like a meteor falling
+    f = note('E7') * (note('A5') / note('E7')) ** (t / dur)
+    whistle = osc(f, dur) * adsr(dur, 0.15, 0.1, 0.7, 0.5) * 0.12
+    n = n_samples(dur)
+    pan = np.linspace(-0.9, 0.9, n)
+    left = np.cos((pan + 1) * np.pi / 4) * np.sqrt(2)
+    right = np.sin((pan + 1) * np.pi / 4) * np.sqrt(2)
+    body = whoosh + hiss + whistle
+    x = mix(1.5, stereo=True)
+    x[:n, 0] += body * left
+    x[:n, 1] += body * right
+    # Sparkle trail following the star across
+    pent = ['E7', 'G7', 'A7', 'C8', 'D8']
+    for i in range(9):
+        st = 0.25 + i * 0.09
+        f = note(pent[int(RNG.integers(0, len(pent)))])
+        sp = bell(f, 0.4, 0.3) * (0.32 - i * 0.025)
+        x += mix(1.5, (st, sp, -0.7 + i * 0.18), stereo=True)
+    x = with_reverb(x, reverberance=55, room=70, wet_db=-5, tail=0.4, tmp=tmp)
+    return fade_tail(x, 0.1)
+
+
+def sfx_shooting_star_catch(tmp):
+    """Bright rising 'bling-bling-bling!' with a shimmer - bonus caught."""
+    run = ['G6', 'B6', 'D7', 'G7']
+    events = []
+    for i, n_ in enumerate(run):
+        events.append((i * 0.06, bell(note(n_), 0.9, 0.5) * (0.6 + i * 0.12), -0.4 + i * 0.27))
+    t = times(0.9)
+    shimmer = osc(note('G7') * (1 + 0.012 * np.sin(2 * np.pi * 13 * t)), 0.9) * adsr(0.9, 0.2, 0.1, 0.6, 0.5) * 0.15
+    events.append((0.18, shimmer, 0.0))
+    for i in range(7):
+        f = note(['D8', 'E8', 'G8'][int(RNG.integers(0, 3))])
+        events.append((0.22 + i * 0.05, bell(f, 0.3, 0.2) * 0.25, RNG.uniform(-0.9, 0.9)))
+    x = mix(1.1, *events, stereo=True)
+    x = with_reverb(x, reverberance=50, room=60, wet_db=-5, tail=0.4, tmp=tmp)
+    return fade_tail(x, 0.08)
+
+
 def sfx_time_warning():
     """Soft clock tick for the final seconds."""
     dur = 0.08
@@ -591,6 +639,8 @@ SFX = {
     'round_complete.mp3': sfx_round_complete,
     'game_win.mp3': sfx_game_win,
     'game_lose.mp3': sfx_game_lose,
+    'shooting_star.mp3': sfx_shooting_star,
+    'shooting_star_catch.mp3': sfx_shooting_star_catch,
 }
 
 

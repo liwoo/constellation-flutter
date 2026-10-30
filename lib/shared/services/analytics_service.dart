@@ -206,6 +206,28 @@ class AnalyticsService {
     });
   }
 
+  /// Ran out of time and spent a life to replay the letter round
+  Future<void> logLifeUsed({
+    required int livesRemaining,
+    required int letterRound,
+  }) async {
+    await _logEvent('life_used', {
+      'lives_remaining': livesRemaining,
+      'letter_round': letterRound,
+    });
+  }
+
+  /// Lives gained from a rewarded ad or a purchase
+  Future<void> logLivesGained({
+    required int amount,
+    required String source,
+  }) async {
+    await _logEvent('lives_gained', {
+      'amount': amount,
+      'source': source,
+    });
+  }
+
   /// User used space button (bonus action)
   Future<void> logSpaceUsed({required int usageCount}) async {
     await _logEvent('bonus_space_used', {
