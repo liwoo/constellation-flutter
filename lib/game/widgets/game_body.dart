@@ -261,8 +261,8 @@ class _GameBodyState extends State<GameBody>
               !previous.showStarEarnedAnimation &&
               current.showStarEarnedAnimation,
           listener: (context, state) {
-            // Play star celebration sound and haptic
-            AudioService.instance.play(GameSound.mysteryReward);
+            // Play star celebration sound and haptic (lands just after the fanfare)
+            AudioService.instance.playDelayed(GameSound.starEarned, const Duration(milliseconds: 400));
             HapticService.instance.success();
             // Triple burst haptic for excitement
             Future.delayed(const Duration(milliseconds: 150), () {
@@ -1639,7 +1639,11 @@ class _GameBodyState extends State<GameBody>
 
   Widget _buildIconButton({required IconData icon, required VoidCallback onTap}) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        AudioService.instance.play(GameSound.buttonTap);
+        HapticService.instance.selection();
+        onTap();
+      },
       child: Container(
         width: 36,
         height: 36,

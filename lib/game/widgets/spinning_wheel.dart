@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:constellation_app/shared/services/services.dart';
 import 'package:constellation_app/shared/theme/theme.dart';
 
 /// A spinning wheel widget that displays letters and spins to select one
@@ -34,6 +35,11 @@ class _SpinningWheelState extends State<SpinningWheel>
   bool _isSpinning = false;
   int _selectedIndex = 0;
 
+  // Ratchet-click tracking: tick each time a new segment passes the pointer
+  int _lastTickSegment = 0;
+  DateTime _lastTickAt = DateTime.fromMillisecondsSinceEpoch(0);
+  static const _minTickGap = Duration(milliseconds: 45);
+
   @override
   void initState() {
     super.initState();
@@ -42,6 +48,7 @@ class _SpinningWheelState extends State<SpinningWheel>
       duration: const Duration(milliseconds: 4000),
     );
 
+    _controller.addListener(_onSpinFrame);
     _controller.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         setState(() {
@@ -60,8 +67,26 @@ class _SpinningWheelState extends State<SpinningWheel>
     super.dispose();
   }
 
+  void _onSpinFrame() {
+    if (!_isSpinning || widget.letters.isEmpty) return;
+    final segmentAngle = 2 * pi / widget.letters.length;
+    final segment = (_animation.value / segmentAngle).floor();
+    if (segment == _lastTickSegment) return;
+    _lastTickSegment = segment;
+
+    // Throttle so the fast start is a rattle, not a wall of noise
+    final now = DateTime.now();
+    if (now.difference(_lastTickAt) < _minTickGap) return;
+    _lastTickAt = now;
+    AudioService.instance.play(GameSound.wheelTick, minInterval: Duration.zero);
+    HapticService.instance.selection();
+  }
+
   void _spin() {
     if (_isSpinning || widget.letters.isEmpty) return;
+
+    AudioService.instance.play(GameSound.buttonTap);
+    _lastTickSegment = (_currentRotation / (2 * pi / widget.letters.length)).floor();
 
     setState(() {
       _isSpinning = true;

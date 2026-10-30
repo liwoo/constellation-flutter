@@ -98,6 +98,27 @@ class _SettingsBodyState extends State<SettingsBody> {
 
                               const SizedBox(height: AppSpacing.md),
 
+                              // Music toggle
+                              _buildSettingCard(
+                                context: context,
+                                icon: Icons.music_note,
+                                title: 'Music',
+                                subtitle: 'Play soothing background music',
+                                trailing: PlatformSwitch(
+                                  value: state.musicEnabled,
+                                  onChanged: (value) {
+                                    context
+                                        .read<SettingsCubit>()
+                                        .setMusicEnabled(value);
+                                  },
+                                  material: (_, __) => MaterialSwitchData(
+                                    activeColor: AppColors.accentGold,
+                                  ),
+                                ),
+                              ),
+
+                              const SizedBox(height: AppSpacing.md),
+
                               // Haptics toggle
                               _buildSettingCard(
                                 context: context,

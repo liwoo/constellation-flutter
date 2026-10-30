@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:constellation_app/shared/constants/constants.dart';
-import 'package:constellation_app/shared/services/haptic_service.dart';
+import 'package:constellation_app/shared/services/services.dart';
 import 'package:constellation_app/shared/theme/theme.dart';
 
 /// Animated counter that counts up with haptic feedback
@@ -79,6 +79,8 @@ class _AnimatedCounterState extends State<AnimatedCounter>
     // Trigger haptic at intervals
     if (delta >= widget.hapticInterval) {
       HapticService.instance.light();
+      // Blip pitch climbs as the number counts up
+      AudioService.instance.play(GameSound.counterTick, rate: 1.0 + _controller.value * 0.6);
       _lastHapticValue = currentValue;
     }
   }
@@ -312,6 +314,7 @@ class _NextRoundCounterState extends State<_NextRoundCounter>
     final currentValue = _timeAnimation.value.round();
     if ((currentValue - _lastHapticValue).abs() >= 2) {
       HapticService.instance.light();
+      AudioService.instance.play(GameSound.counterTick, rate: 1.0 + _controller.value * 0.6);
       _lastHapticValue = currentValue;
     }
 
