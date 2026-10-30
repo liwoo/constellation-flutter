@@ -1,4 +1,6 @@
-<!DOCTYPE html><html><head>
+<!DOCTYPE html>
+<html lang="en">
+<head>
   <!--
     If you are serving your web app in a path other than the root, change the
     href value below to reflect the base path you are serving from.
@@ -16,91 +18,332 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0B0820">
+
+  <title>Constellation — The Cosmic Word Puzzle</title>
+  <meta name="description" content="Race through the alphabet in Constellation, a cosmic word puzzle where you connect letters, complete categories, and beat the clock.">
+  <meta name="application-name" content="Constellation">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+  <meta name="googlebot" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://constellation-liwu-pro.vercel.app/">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Constellation">
+  <meta property="og:locale" content="en_GB">
+  <meta property="og:title" content="Constellation — The Cosmic Word Puzzle">
+  <meta property="og:description" content="Connect letters, complete categories, and race through the alphabet before time runs out.">
+  <meta property="og:url" content="https://constellation-liwu-pro.vercel.app/">
+  <meta property="og:image" content="https://constellation-liwu-pro.vercel.app/og-image.jpg">
+  <meta property="og:image:secure_url" content="https://constellation-liwu-pro.vercel.app/og-image.jpg">
+  <meta property="og:image:type" content="image/jpeg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Constellation cosmic word puzzle with an astronaut among glowing letters and stars">
+
+  <!-- X / Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Constellation — The Cosmic Word Puzzle">
+  <meta name="twitter:description" content="Connect letters, complete categories, and race through the alphabet before time runs out.">
+  <meta name="twitter:image" content="https://constellation-liwu-pro.vercel.app/og-image.jpg">
+  <meta name="twitter:image:alt" content="Constellation cosmic word puzzle with an astronaut among glowing letters and stars">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="constellation_app">
+  <meta name="apple-mobile-web-app-title" content="Constellation">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="preload" as="image" href="icons/Icon-192.png" fetchpriority="high">
 
-  <title>constellation_app</title>
   <link rel="manifest" href="manifest.json">
-  
-  
-  <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": ["VideoGame", "WebApplication"],
+    "name": "Constellation",
+    "url": "https://constellation-liwu-pro.vercel.app/",
+    "image": "https://constellation-liwu-pro.vercel.app/og-image.jpg",
+    "description": "A cosmic word puzzle where players connect letters, complete categories, and race through the alphabet before time runs out.",
+    "genre": ["Word game", "Puzzle game"],
+    "playMode": "SinglePlayer",
+    "applicationCategory": "GameApplication",
+    "operatingSystem": "Web, Android, iOS",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
+
   <style id="splash-screen-style">
-    html {
-      height: 100%
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
+    html,
     body {
+      height: 100%;
       margin: 0;
-      min-height: 100%;
-      background-color: #ffffff;
-          background-size: 100% 100%;
+      background-color: #0B0820;
+      overflow: hidden;
     }
 
-    .center {
+    .app-splash {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: grid;
+      place-items: center;
+      min-height: 100dvh;
+      padding: 24px;
+      box-sizing: border-box;
+      overflow: hidden;
+      isolation: isolate;
+      color: #fff;
+      background:
+        radial-gradient(circle at 50% 30%, rgba(124, 77, 255, 0.28), transparent 34%),
+        radial-gradient(circle at 15% 85%, rgba(255, 126, 226, 0.16), transparent 26%),
+        linear-gradient(155deg, #17103a 0%, #0b0820 50%, #080617 100%);
+      opacity: 1;
+      transition: opacity 320ms ease, visibility 320ms ease;
+    }
+
+    .app-splash::before,
+    .app-splash::after {
+      content: "";
+      position: absolute;
+      inset: -20%;
+      z-index: -2;
+      background-image:
+        radial-gradient(circle, rgba(255, 255, 255, 0.95) 0 1px, transparent 1.5px),
+        radial-gradient(circle, rgba(197, 175, 255, 0.7) 0 1px, transparent 1.7px);
+      background-position: 0 0, 37px 61px;
+      background-size: 94px 94px, 143px 143px;
+      animation: star-drift 22s linear infinite;
+    }
+
+    .app-splash::after {
+      inset: 0;
+      z-index: -1;
+      background:
+        linear-gradient(28deg, transparent 47.5%, rgba(255, 215, 105, 0.18) 48%, rgba(255, 215, 105, 0.18) 48.3%, transparent 48.8%) 16% 24% / 180px 130px no-repeat,
+        linear-gradient(-24deg, transparent 47.5%, rgba(180, 150, 255, 0.2) 48%, rgba(180, 150, 255, 0.2) 48.3%, transparent 48.8%) 87% 72% / 210px 160px no-repeat;
+      animation: none;
+    }
+
+    .app-splash.is-ready {
+      visibility: hidden;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .splash-card {
+      width: min(100%, 420px);
+      text-align: center;
+    }
+
+    .splash-logo-shell {
+      position: relative;
+      width: 132px;
+      height: 132px;
+      margin: 0 auto 26px;
+    }
+
+    .splash-logo-shell::before {
+      content: "";
+      position: absolute;
+      inset: -14px;
+      border: 1px solid rgba(208, 191, 255, 0.28);
+      border-radius: 42px;
+      box-shadow: 0 0 42px rgba(142, 99, 255, 0.34);
+      animation: orbit-pulse 2.4s ease-in-out infinite;
+    }
+
+    .splash-logo {
+      position: relative;
+      display: block;
+      width: 132px;
+      height: 132px;
+      border-radius: 38px;
+      box-shadow: 0 18px 54px rgba(3, 1, 17, 0.52);
+    }
+
+    .splash-eyebrow {
+      margin: 0 0 10px;
+      color: #d5c6ff;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+    }
+
+    .splash-title {
       margin: 0;
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      -ms-transform: translate(-50%, -50%);
-      transform: translate(-50%, -50%);
+      font-size: clamp(30px, 8vw, 44px);
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      line-height: 1;
+      text-transform: uppercase;
+      text-shadow: 0 0 28px rgba(174, 142, 255, 0.3);
     }
 
-    .contain {
-      display:block;
-      width:100%; height:100%;
-      object-fit: contain;
+    .splash-tagline {
+      margin: 12px 0 34px;
+      color: rgba(242, 237, 255, 0.72);
+      font-size: 15px;
+      letter-spacing: 0.035em;
     }
 
-    .stretch {
-      display:block;
-      width:100%; height:100%;
+    .splash-progress {
+      width: min(100%, 300px);
+      height: 5px;
+      margin: 0 auto 14px;
+      overflow: hidden;
+      border: 1px solid rgba(206, 191, 255, 0.14);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
     }
 
-    .cover {
-      display:block;
-      width:100%; height:100%;
-      object-fit: cover;
+    .splash-progress-bar {
+      width: 42%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #8d65ff, #f3a9ff, #ffd86b);
+      box-shadow: 0 0 16px rgba(181, 137, 255, 0.75);
+      animation: loading-orbit 1.5s ease-in-out infinite;
     }
 
-    .bottom {
-      position: absolute;
-      bottom: 0;
-      left: 50%;
-      -ms-transform: translate(-50%, 0);
-      transform: translate(-50%, 0);
+    .splash-status {
+      min-height: 20px;
+      margin: 0;
+      color: rgba(235, 228, 255, 0.72);
+      font-size: 13px;
+      letter-spacing: 0.04em;
     }
 
-    .bottomLeft {
-      position: absolute;
-      bottom: 0;
-      left: 0;
+    .splash-hint {
+      min-height: 18px;
+      margin: 8px 0 0;
+      color: rgba(235, 228, 255, 0.46);
+      font-size: 12px;
+      opacity: 0;
+      transition: opacity 300ms ease;
     }
 
-    .bottomRight {
-      position: absolute;
-      bottom: 0;
-      right: 0;
+    .splash-hint.is-visible {
+      opacity: 1;
+    }
+
+    .splash-retry {
+      display: none;
+      margin: 20px auto 0;
+      padding: 10px 18px;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      border-radius: 999px;
+      color: #fff;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      background: rgba(141, 101, 255, 0.24);
+    }
+
+    .splash-retry.is-visible {
+      display: block;
+    }
+
+    @keyframes loading-orbit {
+      0% { transform: translateX(-105%); }
+      55%, 100% { transform: translateX(240%); }
+    }
+
+    @keyframes orbit-pulse {
+      0%, 100% { transform: scale(0.98) rotate(-2deg); opacity: 0.55; }
+      50% { transform: scale(1.04) rotate(2deg); opacity: 1; }
+    }
+
+    @keyframes star-drift {
+      from { transform: translate3d(0, 0, 0); }
+      to { transform: translate3d(94px, 94px, 0); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .app-splash::before,
+      .splash-logo-shell::before,
+      .splash-progress-bar {
+        animation: none;
+      }
+
+      .splash-progress-bar {
+        width: 68%;
+      }
     }
   </style>
   <script id="splash-screen-script">
-    function removeSplashFromWeb() {
-      document.getElementById("splash")?.remove();
-      document.getElementById("splash-branding")?.remove();
-      document.body.style.background = "transparent";
+    let splashRemoved = false;
+
+    function updateSplashStatus(message) {
+      const status = document.getElementById("splash-status");
+      if (status) status.textContent = message;
     }
+
+    function showSplashError() {
+      updateSplashStatus("The stars did not align. Please try again.");
+      document.getElementById("splash-progress")?.setAttribute("hidden", "");
+      document.getElementById("splash-retry")?.classList.add("is-visible");
+    }
+
+    function removeSplashFromWeb() {
+      if (splashRemoved) return;
+      splashRemoved = true;
+
+      const splash = document.getElementById("splash");
+      splash?.setAttribute("aria-busy", "false");
+      splash?.classList.add("is-ready");
+      window.setTimeout(() => splash?.remove(), 340);
+    }
+
+    window.addEventListener("flutter-first-frame", removeSplashFromWeb, { once: true });
+    window.addEventListener("unhandledrejection", (event) => {
+      if (!splashRemoved) showSplashError(event.reason);
+    });
+
+    window.setTimeout(() => {
+      if (!splashRemoved) {
+        document.getElementById("splash-hint")?.classList.add("is-visible");
+      }
+    }, 7000);
   </script>
 </head>
 <body>
-  
-  <script src="flutter_bootstrap.js" async=""></script>
+  <div id="splash" class="app-splash" role="status" aria-live="polite" aria-busy="true">
+    <main class="splash-card">
+      <div class="splash-logo-shell" aria-hidden="true">
+        <img class="splash-logo" src="icons/Icon-192.png" alt="" width="132" height="132">
+      </div>
+      <p class="splash-eyebrow">The cosmic word puzzle</p>
+      <h1 class="splash-title">Constellation</h1>
+      <p class="splash-tagline">Where words become stars</p>
+      <div id="splash-progress" class="splash-progress" aria-hidden="true">
+        <div class="splash-progress-bar"></div>
+      </div>
+      <p id="splash-status" class="splash-status">Charting the alphabet…</p>
+      <p id="splash-hint" class="splash-hint">First launch can take a little longer.</p>
+      <button id="splash-retry" class="splash-retry" type="button" onclick="window.location.reload()">Try again</button>
+    </main>
+  </div>
 
-
-</body></html>
+  <noscript>
+    <p style="margin: 2rem; color: white; font-family: sans-serif;">Constellation needs JavaScript enabled to launch the game.</p>
+  </noscript>
+  <script src="flutter_bootstrap.js" defer></script>
+</body>
+</html>
