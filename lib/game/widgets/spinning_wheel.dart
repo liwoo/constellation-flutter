@@ -10,7 +10,6 @@ class SpinningWheel extends StatefulWidget {
     required this.letters,
     required this.onLetterSelected,
     this.size = 300,
-    this.targetLetter,
   });
 
   /// Letters to display on the wheel (remaining letters)
@@ -21,9 +20,6 @@ class SpinningWheel extends StatefulWidget {
 
   /// Size of the wheel
   final double size;
-
-  /// Land on this letter instead of a random one (scripted practice)
-  final String? targetLetter;
 
   @override
   State<SpinningWheel> createState() => _SpinningWheelState();
@@ -96,13 +92,8 @@ class _SpinningWheelState extends State<SpinningWheel>
       _isSpinning = true;
     });
 
-    // Pick a random letter (or the scripted one)
-    final forcedIndex = widget.targetLetter == null
-        ? -1
-        : widget.letters.indexOf(widget.targetLetter!);
-    _selectedIndex = forcedIndex >= 0
-        ? forcedIndex
-        : _random.nextInt(widget.letters.length);
+    // Pick a random letter
+    _selectedIndex = _random.nextInt(widget.letters.length);
 
     // Calculate target rotation
     // We want to land on the selected letter at the top (12 o'clock position)
