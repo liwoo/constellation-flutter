@@ -61,6 +61,25 @@ class CategoryService {
   CategoryService._();
   static final CategoryService instance = CategoryService._();
 
+  /// Broad, everyday categories that help new players learn the game with
+  /// familiar subjects before more specialised categories are introduced.
+  static const Set<String> _earlyRoundFamiliarCategories = {
+    'Animals',
+    'Food & Drink',
+    'Countries',
+    'Cities',
+    'Around The House',
+    'Kitchen Items',
+    'Clothing',
+    'Occupations',
+    'Transportation',
+    'Cars',
+    'Popular Names',
+  };
+
+  static const int _familiarCategoryMaxRound = 6;
+  static const int _familiarCategoryWeightMultiplier = 50;
+
   final List<Category> _categories = [];
   bool _initialized = false;
   final _random = Random();
@@ -235,8 +254,8 @@ class CategoryService {
     return (category: category, word: word);
   }
 
-  /// Get max difficulty allowed for a given round
-  /// Early rounds have strictly easy categories, progressively unlocking harder ones
+  /// Get the normal maximum difficulty for a given round.
+  /// Familiar-category promotion is applied separately during rounds 1-6.
   int _getMaxDifficultyForRound(int round) {
     if (round <= 3) return 1;       // Rounds 1-3: Very easy only (difficulty 1)
     if (round <= 6) return 2;       // Rounds 4-6: Easy (difficulty 1-2)
@@ -245,29 +264,39 @@ class CategoryService {
     return 5;                        // Rounds 16+: All difficulties (1-5)
   }
 
-  /// Get categories for a letter, filtered and weighted by difficulty based on game round
-  /// Early rounds GUARANTEE easy categories, progressively allowing harder ones
-  List<Category> getCategoriesForLetterWeightedByRound(String letter, int round) {
+  /// Get categories for a letter, filtered and weighted by game round.
+  ///
+  /// Rounds 1-6 heavily favour broad, familiar categories, even when an older
+  /// category difficulty rating would otherwise hide one of them. From round 7
+  /// onward, selection follows the normal difficulty progression.
+  List<Category> getCategoriesForLetterWeightedByRound(
+    String letter,
+    int round,
+  ) {
     final validCategories = getCategoriesWithLetter(letter);
     if (validCategories.isEmpty) return [];
 
     // Filter categories by max allowed difficulty for this round
     final maxDifficulty = _getMaxDifficultyForRound(round);
-    final filteredCategories = validCategories
-        .where((c) => c.difficulty <= maxDifficulty)
-        .toList();
+    final favourFamiliarCategories = round <= _familiarCategoryMaxRound;
+    final filteredCategories = validCategories.where((category) {
+      return category.difficulty <= maxDifficulty ||
+          (favourFamiliarCategories &&
+              _earlyRoundFamiliarCategories.contains(category.name));
+    }).toList();
 
     // If no categories match the difficulty filter, fall back to easiest available
-    final categoriesToUse = filteredCategories.isNotEmpty
-        ? filteredCategories
-        : validCategories..sort((a, b) => a.difficulty.compareTo(b.difficulty));
+    final categoriesToUse =
+        filteredCategories.isNotEmpty ? filteredCategories : validCategories
+          ..sort((a, b) => a.difficulty.compareTo(b.difficulty));
 
     if (categoriesToUse.isEmpty) return [];
 
     // Calculate target difficulty based on round (within allowed range)
     // Earlier rounds target lower difficulty, later rounds target higher
     final progress = ((round - 1) / 24).clamp(0.0, 1.0);
-    final targetDifficulty = 1 + (progress * (maxDifficulty - 1)); // Range 1-maxDifficulty
+    final targetDifficulty =
+        1 + (progress * (maxDifficulty - 1)); // Range 1-maxDifficulty
 
     // Weight categories: closer to target difficulty = higher weight
     final weightedList = <Category>[];
@@ -276,7 +305,13 @@ class CategoryService {
       final distance = (category.difficulty - targetDifficulty).abs();
       // Weight formula: higher weight for closer to target
       // Max distance is ~4, so weight ranges from 1 (far) to 5 (exact match)
-      final weight = (5 - distance).clamp(1.0, 5.0).round();
+      final difficultyWeight = (5 - distance).clamp(1.0, 5.0).round();
+      final familiarityMultiplier =
+          favourFamiliarCategories &&
+              _earlyRoundFamiliarCategories.contains(category.name)
+          ? _familiarCategoryWeightMultiplier
+          : 1;
+      final weight = difficultyWeight * familiarityMultiplier;
 
       // Add category multiple times based on weight
       for (var i = 0; i < weight; i++) {
