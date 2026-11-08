@@ -197,7 +197,7 @@ class MainMenuBody extends StatelessWidget {
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Text(
-                                  'v1.0.0',
+                                  'v${AppConstants.appVersion}',
                                   style: GoogleFonts.exo2(
                                     color: AppColors.white.withAlpha(102),
                                     fontSize: 12,
