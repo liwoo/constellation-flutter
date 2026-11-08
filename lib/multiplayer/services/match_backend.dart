@@ -25,8 +25,18 @@ abstract class MatchBackend {
   /// the player just shows as away, scores intact.
   Future<void> leaveRoom(String code, {required String uid, required bool giveUpSeat});
 
-  /// Deal the match and start the clock
+  /// Deal the match (letters, categories and the warm-up word) and open the
+  /// warm-up: players spell the shared word, then the host starts scoring
   Future<void> startMatch(String code, MatchSetup setup);
+
+  /// Mark this player as having spelled the warm-up word
+  Future<void> markReady(String code, String uid);
+
+  /// Leave the warm-up and start the scored rounds (host only)
+  Future<void> startScoring(String code);
+
+  /// End the match now and jump everyone to the final scores (host only)
+  Future<void> abortMatch(String code);
 
   /// Record an answer (stamped with server time)
   Future<void> submitAnswer(

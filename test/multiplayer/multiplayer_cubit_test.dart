@@ -72,6 +72,28 @@ void main() {
 
   setUp(() => server = FakeServer());
 
+  /// Spell the shared warm-up word on a seat's practice board and submit it
+  Future<void> passPractice(WidgetTester tester, MultiplayerCubit seat) async {
+    final word = seat.state.room!.setup!.practiceWord;
+    for (final c in word.split('')) {
+      final node = seat.game.state.letters.firstWhere((l) => l.letter == c);
+      seat.game.selectLetter(node.id);
+    }
+    seat.game.submitWord();
+    await settle(tester);
+  }
+
+  /// Host deals, both warm up, host starts the scored rounds
+  Future<void> startMatch(WidgetTester tester, MultiplayerCubit host, List<MultiplayerCubit> all) async {
+    await host.startMatch();
+    await settle(tester);
+    for (final seat in all) {
+      await passPractice(tester, seat);
+    }
+    await host.startScoring();
+    await settle(tester);
+  }
+
   test('the host deals 8 rounds of distinct letters, five answerable categories each', () {
     final setup = MultiplayerCubit.dealMatch(Random(1));
     expect(setup.rounds, hasLength(MultiplayerConfig.rounds));
@@ -111,13 +133,32 @@ void main() {
 
     await ana.startMatch();
     await settle(tester);
-    expect(ana.state.stage, MatchStage.intro);
-    expect(ben.state.stage, MatchStage.intro);
+    // The warm-up comes first, not the scored rounds
+    expect(ana.state.stage, MatchStage.practice);
+    expect(ben.state.stage, MatchStage.practice);
 
     // Too late to join now
     final cy = seat('cy');
     await cy.joinRoom(code, 'Cy');
     expect(cy.state.error, contains('already started'));
+
+    // Only the host can start scoring, and only once everyone's warmed up
+    await passPractice(tester, ana);
+    expect(ana.state.room!.canStartScoring, isFalse, reason: 'Ben not ready yet');
+    await ana.startScoring(); // No-op while Ben's warming up
+    await settle(tester);
+    expect(ana.state.stage, MatchStage.practice);
+
+    await passPractice(tester, ben);
+    expect(ana.state.room!.canStartScoring, isTrue);
+    await ben.startScoring(); // Not his to start
+    await settle(tester);
+    expect(ana.state.stage, MatchStage.practice);
+
+    await ana.startScoring();
+    await settle(tester);
+    expect(ana.state.stage, MatchStage.intro);
+    expect(ben.state.stage, MatchStage.intro);
 
     await ana.close();
     await ben.close();
@@ -151,8 +192,7 @@ void main() {
     await settle(tester);
     await ben.joinRoom(ana.state.room!.code, 'Ben');
     await settle(tester);
-    await ana.startMatch();
-    await settle(tester);
+    await startMatch(tester, ana, [ana, ben]);
 
     // Intro over: both boards come up on the same letter and stars
     await advance(tester, MatchTiming.introMs);
@@ -208,13 +248,39 @@ void main() {
     await settle(tester);
     await ben.joinRoom(ana.state.room!.code, 'Ben');
     await settle(tester);
-    await ana.startMatch();
-    await settle(tester);
+    await startMatch(tester, ana, [ana, ben]);
 
     await advance(tester, MatchTiming.introMs + MatchTiming.roundMs);
     expect(ana.state.room!.ends[0], isNotNull);
     expect(ana.state.room!.ends[0]!.by, isNull);
     expect(ben.state.stage, MatchStage.roundOver);
+
+    await ana.close();
+    await ben.close();
+  });
+
+  testWidgets('only the host can abort, and it jumps to the final scores', (tester) async {
+    final ana = seat('ana');
+    final ben = seat('ben');
+    await ana.createRoom('Ana');
+    await settle(tester);
+    await ben.joinRoom(ana.state.room!.code, 'Ben');
+    await settle(tester);
+    await startMatch(tester, ana, [ana, ben]);
+    await advance(tester, MatchTiming.introMs);
+    expect(ana.state.stage, MatchStage.playing);
+
+    // A guest can't end the game for everyone
+    await ben.abortMatch();
+    await settle(tester);
+    expect(ana.state.stage, MatchStage.playing);
+
+    // The host can - straight to the final standings
+    await ana.abortMatch();
+    await settle(tester);
+    expect(ana.state.stage, MatchStage.finished);
+    expect(ben.state.stage, MatchStage.finished);
+    expect(ana.game.state.isPlaying, isFalse, reason: 'boards froze');
 
     await ana.close();
     await ben.close();

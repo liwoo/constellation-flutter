@@ -14,13 +14,16 @@ import 'package:constellation_app/shared/constants/constants.dart';
 // them into arrays. Times are server milliseconds.
 
 /// Where a room is at
-enum MatchStatus { lobby, playing, finished }
+enum MatchStatus { lobby, practice, playing, finished }
 
 /// What every player should be looking at right now (derived from the room
 /// and the server clock, so all screens move together)
 enum MatchStage {
   /// Waiting for friends - the host starts when ready
   lobby,
+
+  /// Warm-up: everyone spells the same word, then the host starts scoring
+  practice,
 
   /// Countdown before the first round
   intro,
@@ -84,10 +87,11 @@ class MatchRoundSetup extends Equatable {
 
 /// The whole match, dealt by the host when it starts
 class MatchSetup extends Equatable {
-  const MatchSetup({required this.seed, required this.rounds});
+  const MatchSetup({required this.seed, required this.rounds, this.practiceWord = ''});
 
   factory MatchSetup.fromJson(Map<Object?, Object?> json) => MatchSetup(
         seed: _int(json['seed']),
+        practiceWord: (json['practiceWord'] as String?) ?? '',
         rounds: [
           for (final r in _list(json['rounds']))
             if (r is Map) MatchRoundSetup.fromJson(r),
@@ -97,16 +101,23 @@ class MatchSetup extends Equatable {
   final int seed;
   final List<MatchRoundSetup> rounds;
 
+  /// The shared word everyone spells in the warm-up before scoring
+  final String practiceWord;
+
   /// Board seed for a round (each category mixes in its own index)
   int roundSeed(int round) => (seed + 0x85EBCA6B * (round + 1)) & 0xFFFFFFFF;
 
+  /// Board seed for the warm-up word (its own, so it looks nothing like round 1)
+  int get practiceSeed => (seed ^ 0x27D4EB2F) & 0xFFFFFFFF;
+
   Map<String, Object?> toJson() => {
         'seed': seed,
+        'practiceWord': practiceWord,
         'rounds': [for (final r in rounds) r.toJson()],
       };
 
   @override
-  List<Object?> get props => [seed, rounds];
+  List<Object?> get props => [seed, practiceWord, rounds];
 }
 
 /// How a round ended: [by] finished first, or null if the clock ran out
@@ -152,6 +163,7 @@ class MatchRoom extends Equatable {
     this.endsAt = 0,
     this.ends = const {},
     this.answers = const {},
+    this.ready = const {},
   });
 
   factory MatchRoom.fromJson(String code, Map<Object?, Object?> json) {
@@ -185,6 +197,10 @@ class MatchRoom extends Equatable {
                 },
             },
       },
+      ready: {
+        for (final e in _map(json['ready']).entries)
+          if (e.value == true) '${e.key}': true,
+      },
     );
   }
 
@@ -206,6 +222,9 @@ class MatchRoom extends Equatable {
 
   /// round -> player -> category index -> answer
   final Map<int, Map<String, Map<int, MatchAnswer>>> answers;
+
+  /// Who has spelled the warm-up word (uid -> true)
+  final Map<String, bool> ready;
 
   int get totalRounds => setup?.rounds.length ?? MultiplayerConfig.rounds;
 
@@ -230,10 +249,24 @@ class MatchRoom extends Equatable {
 
   bool get canStart => status == MatchStatus.lobby && onlinePlayers.length >= MultiplayerConfig.minPlayers;
 
+  /// Everyone here has spelled the warm-up word
+  bool isReady(String uid) => ready[uid] == true;
+
+  /// How many of the players here have finished the warm-up
+  int get readyCount => onlinePlayers.where((p) => isReady(p.uid)).length;
+
+  /// The host can kick off scoring: in the warm-up, enough players, all ready
+  bool get canStartScoring =>
+      status == MatchStatus.practice &&
+      onlinePlayers.length >= MultiplayerConfig.minPlayers &&
+      onlinePlayers.every((p) => isReady(p.uid));
+
   MatchStage stageAt(int now) {
     switch (status) {
       case MatchStatus.lobby:
         return MatchStage.lobby;
+      case MatchStatus.practice:
+        return MatchStage.practice;
       case MatchStatus.finished:
         final last = ends[totalRounds - 1];
         if (last != null && now < last.at + MatchTiming.roundOverMs) return MatchStage.roundOver;
@@ -265,7 +298,8 @@ class MatchRoom extends Equatable {
       };
 
   @override
-  List<Object?> get props => [code, hostId, players, status, setup, round, startsAt, endsAt, ends, answers];
+  List<Object?> get props =>
+      [code, hostId, players, status, setup, round, startsAt, endsAt, ends, answers, ready];
 }
 
 /// Room clock rules shared by every client
@@ -278,6 +312,10 @@ class MatchTiming {
   static const int roundMs = MultiplayerConfig.roundSeconds * 1000;
   static const int scoreboardMs = MultiplayerConfig.scoreboardSeconds * 1000;
   static const int introMs = MultiplayerConfig.introSeconds * 1000;
+
+  /// The room state for the warm-up: no clock, players spell the shared word
+  /// and the host starts scoring once everyone's ready
+  static Map<String, Object?> practice() => {'status': MatchStatus.practice.name};
 
   /// The room state that starts a match at [now]
   static Map<String, Object?> start(int now) {

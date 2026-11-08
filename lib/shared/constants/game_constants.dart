@@ -426,4 +426,12 @@ class MultiplayerConfig {
   /// Match round N plays at the difficulty of single-player round
   /// 1, 4, 7 ... 22 - letters, mystery orbs and shooting stars ramp the same
   static int difficultyRound(int round) => 1 + (round - 1) * 3;
+
+  /// Warm-up words everyone spells before scoring begins. Short, familiar and
+  /// all distinct letters, so connecting them needs no repeat/space tricks -
+  /// just enough to show a player knows how to play.
+  static const List<String> practiceWords = [
+    'STAR', 'COMET', 'ORBIT', 'SPACE', 'EARTH', 'LIGHT', 'SOLAR', 'PLANET',
+    'GALORE', 'VENUS', 'PLUTO', 'NIGHT', 'SHINE', 'DREAM', 'MAGIC', 'CLOUD',
+  ];
 }

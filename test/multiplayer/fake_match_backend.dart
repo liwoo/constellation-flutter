@@ -98,7 +98,30 @@ class FakeMatchBackend implements MatchBackend {
     final room = server.rooms[code]!;
     room['setup'] = setup.toJson();
     room.remove('answers');
+    room.remove('ready');
+    room['state'] = MatchTiming.practice();
+    server.changed(code);
+  }
+
+  @override
+  Future<void> markReady(String code, String uid) async {
+    final ready = server.rooms[code]!.putIfAbsent('ready', () => <String, Object?>{})! as Map<String, Object?>;
+    ready[uid] = true;
+    server.changed(code);
+  }
+
+  @override
+  Future<void> startScoring(String code) async {
+    final room = server.rooms[code]!;
+    room.remove('ready');
     room['state'] = MatchTiming.start(server.now);
+    server.changed(code);
+  }
+
+  @override
+  Future<void> abortMatch(String code) async {
+    final state = server.rooms[code]!['state']! as Map<String, Object?>;
+    state['status'] = MatchStatus.finished.name;
     server.changed(code);
   }
 
@@ -140,6 +163,7 @@ class FakeMatchBackend implements MatchBackend {
     room
       ..remove('setup')
       ..remove('answers')
+      ..remove('ready')
       ..['state'] = <String, Object?>{'status': 'lobby'};
     server.changed(code);
   }

@@ -6,6 +6,7 @@ import 'package:constellation_app/multiplayer/widgets/lobby_view.dart';
 import 'package:constellation_app/multiplayer/widgets/match_common.dart';
 import 'package:constellation_app/multiplayer/widgets/match_entry_view.dart';
 import 'package:constellation_app/multiplayer/widgets/match_play_view.dart';
+import 'package:constellation_app/multiplayer/widgets/practice_view.dart';
 import 'package:constellation_app/multiplayer/widgets/scoreboard_view.dart';
 import 'package:constellation_app/shared/services/services.dart';
 import 'package:constellation_app/shared/theme/theme.dart';
@@ -20,8 +21,22 @@ class MultiplayerBody extends StatelessWidget {
     final cubit = context.read<MultiplayerCubit>();
     final room = cubit.state.room;
     if (room == null) return;
-    final midMatch = room.status == MatchStatus.playing;
-    if (!await confirmLeaveMatch(context, midMatch: midMatch)) return;
+    final inGame = room.status == MatchStatus.playing || room.status == MatchStatus.practice;
+
+    // Only the owner can abort the game for everyone; others just leave.
+    if (inGame && cubit.state.isHost) {
+      switch (await chooseMatchExit(context)) {
+        case MatchExit.endGame:
+          await cubit.abortMatch();
+        case MatchExit.leaveSeat:
+          await cubit.leave();
+        case MatchExit.stay:
+          break;
+      }
+      return;
+    }
+
+    if (!await confirmLeaveMatch(context, midMatch: inGame)) return;
     await cubit.leave();
   }
 
@@ -34,6 +49,8 @@ class MultiplayerBody extends StatelessWidget {
         listenWhen: (previous, current) => previous.stage != current.stage,
         listener: (context, state) {
           switch (state.stage) {
+            case MatchStage.practice:
+              HapticService.instance.light();
             case MatchStage.playing:
               AudioService.instance.play(GameSound.wheelLand);
               HapticService.instance.heavy();
@@ -75,6 +92,7 @@ class MultiplayerBody extends StatelessWidget {
     void onLeave() => _leave(context);
     return switch (state.stage!) {
       MatchStage.lobby => LobbyView(state: state, onLeave: onLeave),
+      MatchStage.practice => PracticeView(mp: state, onLeave: onLeave),
       MatchStage.intro => MatchIntroView(mp: state),
       MatchStage.playing || MatchStage.roundOver => MatchPlayView(mp: state, onLeave: onLeave),
       MatchStage.scoreboard || MatchStage.finished => ScoreboardView(mp: state, onLeave: onLeave),

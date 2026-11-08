@@ -31,6 +31,7 @@ class MultiplayerCubit extends Cubit<MultiplayerState> {
   late final GameCubit game = GameCubit(
     onMatchAnswer: _onAnswer,
     onMatchFinished: _onFinished,
+    onPracticeComplete: _onPracticeComplete,
   );
 
   StreamSubscription<MatchRoom?>? _roomSub;
@@ -39,6 +40,8 @@ class MultiplayerCubit extends Cubit<MultiplayerState> {
 
   // Round the board is playing (null between rounds)
   int? _playingRound;
+  // Whether the warm-up practice board is up
+  bool _practiceStarted = false;
   // Rounds this client already asked to end on the clock
   final _timeoutsSent = <int>{};
   // Answer writes, in order - finishing waits for them to land
@@ -161,6 +164,15 @@ class MultiplayerCubit extends Cubit<MultiplayerState> {
     final now = state.now;
     final stage = room.stageAt(now);
 
+    // Warm-up board: up while this player hasn't spelled the word yet
+    final inPractice = stage == MatchStage.practice && !room.isReady(state.uid ?? '');
+    if (inPractice && !_practiceStarted) {
+      _startPractice(room);
+    } else if (!inPractice && _practiceStarted) {
+      _practiceStarted = false;
+      game.endPractice();
+    }
+
     if (stage == MatchStage.playing && _playingRound != room.round) {
       _startRound(room);
     } else if (stage != MatchStage.playing && _playingRound != null) {
@@ -178,6 +190,23 @@ class MultiplayerCubit extends Cubit<MultiplayerState> {
         return false;
       }));
     }
+  }
+
+  void _startPractice(MatchRoom room) {
+    final setup = room.setup;
+    if (setup == null || setup.practiceWord.isEmpty) return;
+    _practiceStarted = true;
+    game.startPracticeWord(word: setup.practiceWord, seed: setup.practiceSeed);
+  }
+
+  /// The player spelled the warm-up word: tell everyone they're ready
+  void _onPracticeComplete() {
+    final room = state.room;
+    final uid = state.uid;
+    if (room == null || uid == null) return;
+    _writes = _writes
+        .then((_) => _backend().markReady(room.code, uid))
+        .catchError((Object e) => debugPrint('Multiplayer: ready not saved - $e'));
   }
 
   void _startRound(MatchRoom room) {
@@ -228,12 +257,28 @@ class MultiplayerCubit extends Cubit<MultiplayerState> {
   // HOST
   // ============================================
 
-  /// Deal the match and start the clock (host only, 2+ players here)
+  /// Deal the match and open the warm-up (host only, 2+ players here)
   Future<void> startMatch() async {
     final room = state.room;
     if (room == null || !state.isHost || !room.canStart) return;
     AudioService.instance.play(GameSound.jackpotReveal);
     await _backend().startMatch(room.code, dealMatch(_random));
+  }
+
+  /// Everyone's spelled the warm-up word: start the scored rounds (host only)
+  Future<void> startScoring() async {
+    final room = state.room;
+    if (room == null || !state.isHost || !room.canStartScoring) return;
+    AudioService.instance.play(GameSound.jackpotReveal);
+    await _backend().startScoring(room.code);
+  }
+
+  /// End the match now and jump everyone to the final scores (host only)
+  Future<void> abortMatch() async {
+    final room = state.room;
+    if (room == null || !state.isHost) return;
+    if (room.status != MatchStatus.playing && room.status != MatchStatus.practice) return;
+    await _backend().abortMatch(room.code);
   }
 
   /// Everyone back to the lobby for another go (host only)
@@ -271,7 +316,9 @@ class MultiplayerCubit extends Cubit<MultiplayerState> {
         break;
       }
     }
-    return MatchSetup(seed: random.nextInt(1 << 31), rounds: rounds);
+    final practiceWord =
+        MultiplayerConfig.practiceWords[random.nextInt(MultiplayerConfig.practiceWords.length)];
+    return MatchSetup(seed: random.nextInt(1 << 31), rounds: rounds, practiceWord: practiceWord);
   }
 
   static List<String> _categoriesFor(String letter, int difficultyRound, Random random) {
@@ -318,7 +365,9 @@ class MultiplayerCubit extends Cubit<MultiplayerState> {
     _clock?.cancel();
     _clock = null;
     _playingRound = null;
+    _practiceStarted = false;
     _timeoutsSent.clear();
+    game.endPractice();
     game.endMatchRound();
   }
 
