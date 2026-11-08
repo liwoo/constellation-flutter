@@ -59,135 +59,157 @@ class MainMenuBody extends StatelessWidget {
                 ),
               ),
 
-              // Main content
+              // Main content - the title and buttons sit centred
+              // between the top bar and footer, scrolling if the screen
+              // is too short for them
               SafeArea(
-                child: Column(
-                  children: [
-                    // Top bar with info button
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.md,
-                        vertical: AppSpacing.sm,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.start,
+                child: LayoutBuilder(
+                  builder: (context, constraints) => SingleChildScrollView(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          // Info button
-                          _IconButton(
-                            icon: Icons.info_outline,
-                            onPressed: () => _showAboutDialog(context),
+                          // Top bar with info button
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.md,
+                              vertical: AppSpacing.sm,
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.start,
+                              children: [
+                                // Info button
+                                _IconButton(
+                                  icon: Icons.info_outline,
+                                  onPressed: () => _showAboutDialog(context),
+                                ),
+                              ],
+                            ),
                           ),
-                        ],
-                      ),
-                    ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+                            child: Column(
+                              children: [
+                                // Game Title
+                                Text(
+                                  'CONSTELLATION',
+                                  style: GoogleFonts.orbitron(
+                                    color: AppColors.white,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 2.0,
+                                    fontSize: 28,
+                                    shadows: [
+                                      Shadow(
+                                        color: AppColors.black.withAlpha(128),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
 
-                    const Spacer(flex: 2),
+                                const SizedBox(height: AppSpacing.xs),
 
-                    // Game Title
-                    Text(
-                      'CONSTELLATION',
-                      style: GoogleFonts.orbitron(
-                        color: AppColors.white,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 2.0,
-                        fontSize: 28,
-                        shadows: [
-                          Shadow(
-                            color: AppColors.black.withAlpha(128),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
+                                // Subtitle
+                                Text(
+                                  'WORD GAME',
+                                  style: GoogleFonts.exo2(
+                                    color: AppColors.accentGold,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 4.0,
+                                    fontSize: 14,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+
+                                const SizedBox(height: AppSpacing.lg),
+
+                                // Stats display
+                                _StatsDisplay(
+                                  highScore: state.highScore,
+                                  gamesPlayed: state.gamesPlayed,
+                                ),
+
+                                const SizedBox(height: AppSpacing.xl),
+
+                                // Menu buttons - all same width
+                                Column(
+                                  children: [
+                                    // Alpha Quest button (primary)
+                                    GameButton(
+                                      text: 'ALPHA QUEST',
+                                      onPressed: () => context.go('/game'),
+                                      isPrimary: true,
+                                      width: _buttonWidth,
+                                    ),
+
+                                    const SizedBox(height: AppSpacing.md),
+
+                                    // Realtime multiplayer with friends
+                                    GameButton(
+                                      text: 'MULTIPLAYER',
+                                      onPressed: () => context.go('/multiplayer'),
+                                      isPrimary: false,
+                                      width: _buttonWidth,
+                                    ),
+
+                                    const SizedBox(height: AppSpacing.md),
+
+                                    // Practice mode
+                                    GameButton(
+                                      text: 'PRACTICE',
+                                      onPressed: () => context.go('/practice'),
+                                      isPrimary: false,
+                                      width: _buttonWidth,
+                                    ),
+
+                                    const SizedBox(height: AppSpacing.md),
+
+                                    // How to Play
+                                    GameButton(
+                                      text: 'HOW TO PLAY',
+                                      onPressed: () => _showHowToPlayDialog(context),
+                                      isPrimary: false,
+                                      width: _buttonWidth,
+                                    ),
+
+                                    const SizedBox(height: AppSpacing.md),
+
+                                    // High Scores
+                                    GameButton(
+                                      text: 'HIGH SCORES',
+                                      onPressed: () => _showHighScoresDialog(context, state),
+                                      isPrimary: false,
+                                      width: _buttonWidth,
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
-                        ],
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
 
-                    const SizedBox(height: AppSpacing.xs),
-
-                    // Subtitle
-                    Text(
-                      'WORD GAME',
-                      style: GoogleFonts.exo2(
-                        color: AppColors.accentGold,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 4.0,
-                        fontSize: 14,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-
-                    const SizedBox(height: AppSpacing.lg),
-
-                    // Stats display
-                    _StatsDisplay(
-                      highScore: state.highScore,
-                      gamesPlayed: state.gamesPlayed,
-                    ),
-
-                    const Spacer(flex: 1),
-
-                    // Menu buttons - all same width
-                    Column(
-                      children: [
-                        // Alpha Quest button (primary)
-                        GameButton(
-                          text: 'ALPHA QUEST',
-                          onPressed: () => context.go('/game'),
-                          isPrimary: true,
-                          width: _buttonWidth,
-                        ),
-
-                        const SizedBox(height: AppSpacing.md),
-
-                        // Practice mode
-                        GameButton(
-                          text: 'PRACTICE',
-                          onPressed: () => context.go('/practice'),
-                          isPrimary: false,
-                          width: _buttonWidth,
-                        ),
-
-                        const SizedBox(height: AppSpacing.md),
-
-                        // How to Play
-                        GameButton(
-                          text: 'HOW TO PLAY',
-                          onPressed: () => _showHowToPlayDialog(context),
-                          isPrimary: false,
-                          width: _buttonWidth,
-                        ),
-
-                        const SizedBox(height: AppSpacing.md),
-
-                        // High Scores
-                        GameButton(
-                          text: 'HIGH SCORES',
-                          onPressed: () => _showHighScoresDialog(context, state),
-                          isPrimary: false,
-                          width: _buttonWidth,
-                        ),
-                      ],
-                    ),
-
-                    const Spacer(flex: 2),
-
-                    // Footer with settings icon
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            'v1.0.0',
-                            style: GoogleFonts.exo2(
-                              color: AppColors.white.withAlpha(102),
-                              fontSize: 12,
+                          // Footer with settings icon
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  'v1.0.0',
+                                  style: GoogleFonts.exo2(
+                                    color: AppColors.white.withAlpha(102),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ],

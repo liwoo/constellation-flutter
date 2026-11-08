@@ -80,6 +80,7 @@ class StorageService {
   static const String _totalWinsKey = 'total_wins';
   static const String _savedProgressKey = 'saved_game_progress';
   static const String _starsKey = 'star_balance';
+  static const String _playerNameKey = 'multiplayer_name';
 
   /// Initialize the storage service
   Future<void> init() async {
@@ -256,5 +257,20 @@ class StorageService {
     await init();
     // Default to StarConfig.startingStars (2) if no stars saved
     return _prefs!.getInt(_starsKey) ?? 2;
+  }
+
+  // ============================================
+  // MULTIPLAYER
+  // ============================================
+
+  /// Name shown to other players
+  Future<void> savePlayerName(String name) async {
+    await init();
+    await _prefs!.setString(_playerNameKey, name);
+  }
+
+  Future<String?> loadPlayerName() async {
+    await init();
+    return _prefs!.getString(_playerNameKey);
   }
 }

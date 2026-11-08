@@ -243,69 +243,83 @@ class _LetterConstellationState extends State<LetterConstellation>
   }
 
   /// The bonus letter: pops in as the streak lands, wears a gold ring that
-  /// runs down with its life, a "2x" tag, and flickers before burning out
-  Widget _shootingStarBubble(Widget bubble, ShootingStar star, double size) {
+  /// runs down with its life, a "2x" tag, and flickers before burning out.
+  /// A [twin] - a board star showing the same letter - is already in place,
+  /// so it lights up with the ring and tag as the streak lands instead.
+  Widget _shootingStarBubble(Widget bubble, ShootingStar star, double size, {bool twin = false}) {
     // Outside the cyan dwell ring so the two never overlap
     final ring = size + 20;
     return AnimatedBuilder(
       animation: Listenable.merge([_streakController, _comaController]),
-      builder: (context, child) {
+      builder: (context, _) {
         final t = _streakController.value;
-        final appear = t < 0.75 ? 0.0 : Curves.easeOutBack.transform((t - 0.75) / 0.25);
+        final landed = t < 0.75 ? 0.0 : (t - 0.75) / 0.25;
+        final appear = Curves.easeOutBack.transform(landed);
+        final flicker = _shootingStarOpacity(star);
+        final badges = Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.center,
+          children: [
+            bubble,
+            // Life left
+            Positioned(
+              left: -10,
+              top: -10,
+              width: ring,
+              height: ring,
+              child: Opacity(
+                opacity: twin ? (landed * flicker).clamp(0.0, 1.0) : 1.0,
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(end: star.lifeLeft),
+                  duration: const Duration(seconds: 1),
+                  builder: (context, life, _) => CustomPaint(
+                    painter: DwellRingPainter(
+                      progress: life,
+                      color: AppColors.accentGold,
+                      strokeWidth: 2,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              left: -8,
+              top: -8,
+              child: Opacity(
+                opacity: twin ? (landed * flicker).clamp(0.0, 1.0) : 1.0,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [AppColors.accentGold, AppColors.accentOrange],
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: [
+                      BoxShadow(color: AppColors.black.withAlpha(120), blurRadius: 3),
+                    ],
+                  ),
+                  child: Text(
+                    '${ShootingStarConfig.scoreMultiplier}x',
+                    style: const TextStyle(
+                      color: AppColors.black,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+        if (twin) {
+          // A quick swell as the bonus reaches it
+          return Transform.scale(scale: 1 + 0.18 * sin(landed * pi), child: badges);
+        }
         return Opacity(
-          opacity: (appear.clamp(0.0, 1.0) * _shootingStarOpacity(star)).clamp(0.0, 1.0),
-          child: Transform.scale(scale: 0.4 + 0.6 * appear, child: child),
+          opacity: (appear.clamp(0.0, 1.0) * flicker).clamp(0.0, 1.0),
+          child: Transform.scale(scale: 0.4 + 0.6 * appear, child: badges),
         );
       },
-      child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.center,
-        children: [
-          bubble,
-          // Life left
-          Positioned(
-            left: -10,
-            top: -10,
-            width: ring,
-            height: ring,
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(end: star.secondsLeft / ShootingStarConfig.lifetimeSeconds),
-              duration: const Duration(seconds: 1),
-              builder: (context, life, _) => CustomPaint(
-                painter: DwellRingPainter(
-                  progress: life,
-                  color: AppColors.accentGold,
-                  strokeWidth: 2,
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            left: -8,
-            top: -8,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [AppColors.accentGold, AppColors.accentOrange],
-                ),
-                borderRadius: BorderRadius.circular(8),
-                boxShadow: [
-                  BoxShadow(color: AppColors.black.withAlpha(120), blurRadius: 3),
-                ],
-              ),
-              child: Text(
-                '${ShootingStarConfig.scoreMultiplier}x',
-                style: const TextStyle(
-                  color: AppColors.black,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -354,6 +368,14 @@ class _LetterConstellationState extends State<LetterConstellation>
                   return letter.position;
                 })
                 .toList();
+
+            // Board stars sharing the shooting star's letter share its bonus
+            final star = widget.shootingStar;
+            final bonusIds = {
+              if (star != null)
+                for (final l in widget.letters)
+                  if (l.letter == star.letter) l.id,
+            };
 
             // Star centres in pixels, for the round-start shimmer
             final starCenters = <int, Offset>{
@@ -494,6 +516,7 @@ class _LetterConstellationState extends State<LetterConstellation>
                     final dwellProgress = _getLetterDwellProgress(letter.id);
                     final justConnected = widget.lastConnectedLetterId == letter.id;
                     final isShootingStar = letter.id == ShootingStarConfig.letterId;
+                    final sharesBonus = !isShootingStar && bonusIds.contains(letter.id);
 
                     Widget bubble = LetterBubble(
                       letter: letter.letter,
@@ -506,8 +529,8 @@ class _LetterConstellationState extends State<LetterConstellation>
                       justConnected: justConnected,
                       size: bubbleSize,
                     );
-                    if (isShootingStar && widget.shootingStar != null) {
-                      bubble = _shootingStarBubble(bubble, widget.shootingStar!, bubbleSize);
+                    if (widget.shootingStar case final star? when isShootingStar || sharesBonus) {
+                      bubble = _shootingStarBubble(bubble, star, bubbleSize, twin: sharesBonus);
                     }
 
                     return Positioned(

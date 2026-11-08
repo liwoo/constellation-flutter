@@ -69,12 +69,14 @@ class MysteryOrb {
 
 /// A shooting star that streaked onto the board, trailing a bonus letter.
 /// The letter itself lives in [GameState.letters] with id
-/// [ShootingStarConfig.letterId], so it connects like any other star.
+/// [ShootingStarConfig.letterId], so it connects like any other star. Board
+/// stars showing the same letter share its bonus and its countdown.
 class ShootingStar {
   const ShootingStar({
     required this.letter,
     required this.from,
     required this.secondsLeft,
+    required this.lifetime,
   });
 
   final String letter;
@@ -85,15 +87,51 @@ class ShootingStar {
   /// Seconds until it burns out
   final int secondsLeft;
 
+  /// Seconds it had when it landed
+  final int lifetime;
+
   int get id => ShootingStarConfig.letterId;
 
   bool get isFading => secondsLeft <= ShootingStarConfig.fadingSeconds;
+
+  /// Share of its life left (1.0 as it lands, 0.0 as it burns out)
+  double get lifeLeft => lifetime == 0 ? 0 : secondsLeft / lifetime;
 
   ShootingStar copyWith({int? secondsLeft}) => ShootingStar(
         letter: letter,
         from: from,
         secondsLeft: secondsLeft ?? this.secondsLeft,
+        lifetime: lifetime,
       );
+}
+
+/// One round of a multiplayer match. Every player gets the same letter,
+/// categories and boards - each category's board is laid out from [seed].
+class MatchRound extends Equatable {
+  const MatchRound({
+    required this.number,
+    required this.totalRounds,
+    required this.letter,
+    required this.categories,
+    required this.seed,
+    required this.endsAt,
+  });
+
+  /// 1-based round number
+  final int number;
+  final int totalRounds;
+  final String letter;
+
+  /// Categories in the order the match dealt them (their index is how
+  /// answers are keyed, whatever order the player tackles them in)
+  final List<String> categories;
+  final int seed;
+
+  /// When the round's clock runs out (local time)
+  final DateTime endsAt;
+
+  @override
+  List<Object?> get props => [number, totalRounds, letter, categories, seed, endsAt];
 }
 
 /// Game phase for Alpha Quest mode
@@ -187,6 +225,8 @@ class GameState extends Equatable {
     this.lastShootingStarBonus, // Points from the last caught shooting star (for animation)
     // Lives - spent to replay a letter round when the clock runs out
     this.lives = LivesConfig.startingLives,
+    // Multiplayer round being played (null in single player)
+    this.matchRound,
   });
 
   /// Special ID for space character in selectedLetterIds
@@ -275,6 +315,12 @@ class GameState extends Equatable {
   // Lives - spent to replay a letter round when the clock runs out
   final int lives;
 
+  // Multiplayer round being played (null in single player)
+  final MatchRound? matchRound;
+
+  /// Playing a multiplayer match round
+  bool get isMatch => matchRound != null;
+
   /// Points earned in current letter round
   int get pointsEarnedInRound => score - letterRoundStartScore;
 
@@ -283,6 +329,17 @@ class GameState extends Equatable {
 
   /// Total bonus count for current word
   int get totalBonusCount => spaceUsageCount + repeatUsageCount;
+
+  /// Stars carrying the shooting star's bonus: the shooting star itself and
+  /// every board star showing the same letter
+  Set<int> get bonusLetterIds {
+    final star = shootingStar;
+    if (star == null) return const {};
+    return {
+      for (final l in letters)
+        if (l.id == ShootingStarConfig.letterId || l.letter == star.letter) l.id,
+    };
+  }
 
   /// Total categories to complete per letter
   static const int categoriesPerLetter = 5;
@@ -384,6 +441,7 @@ class GameState extends Equatable {
         shootingStar,
         lastShootingStarBonus,
         lives,
+        matchRound,
       ];
 
   GameState copyWith({
@@ -453,6 +511,7 @@ class GameState extends Equatable {
     int? lastShootingStarBonus,
     bool clearLastShootingStarBonus = false,
     int? lives,
+    MatchRound? matchRound,
   }) {
     return GameState(
       letters: letters ?? this.letters,
@@ -509,6 +568,7 @@ class GameState extends Equatable {
           ? null
           : (lastShootingStarBonus ?? this.lastShootingStarBonus),
       lives: lives ?? this.lives,
+      matchRound: matchRound ?? this.matchRound,
     );
   }
 }
