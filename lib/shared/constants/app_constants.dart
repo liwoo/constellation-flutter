@@ -2,6 +2,9 @@
 class AppConstants {
   const AppConstants._();
 
+  /// Shown on the main menu - keep in step with `version` in pubspec.yaml
+  static const String appVersion = '1.1.0';
+
   // Game timers (in seconds)
   static const int timerShort = 60;
   static const int timerMedium = 90;
