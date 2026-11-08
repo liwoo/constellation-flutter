@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "320444363337",
+    "project_id": "constellation-751cf",
+    "storage_bucket": "constellation-751cf.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:320444363337:android:a62760a082480a29ae8598",
+        "android_client_info": {
+          "package_name": "com.liwu.constellation"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDGNZQmrdFfQEiosCOz8ElyICCyZMXwssI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

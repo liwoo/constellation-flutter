@@ -1,4 +1,7 @@
 {
+  "database": {
+    "rules": "database.rules.json"
+  },
   "hosting": {
     "public": "public",
     "ignore": [
@@ -12,5 +15,45 @@
         "destination": "/index.html"
       }
     ]
+  },
+  "emulators": {
+    "auth": {
+      "port": 9099
+    },
+    "database": {
+      "port": 9000
+    },
+    "ui": {
+      "enabled": false
+    }
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "constellation-751cf",
+          "appId": "1:320444363337:android:a62760a082480a29ae8598",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "ios": {
+        "default": {
+          "projectId": "constellation-751cf",
+          "appId": "1:320444363337:ios:7c689c8b81a1350fae8598",
+          "uploadDebugSymbols": false,
+          "fileOutput": "ios/Runner/GoogleService-Info.plist"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "constellation-751cf",
+          "configurations": {
+            "android": "1:320444363337:android:a62760a082480a29ae8598",
+            "ios": "1:320444363337:ios:7c689c8b81a1350fae8598",
+            "web": "1:320444363337:web:8df15063c219f8e4ae8598"
+          }
+        }
+      }
+    }
   }
 }

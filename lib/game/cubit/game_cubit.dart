@@ -8,13 +8,21 @@ import 'package:constellation_app/game/services/category_dictionary.dart';
 import 'package:constellation_app/shared/constants/constants.dart';
 import 'package:constellation_app/shared/models/models.dart';
 import 'package:constellation_app/shared/services/services.dart';
+import 'package:constellation_app/shared/utils/seeded_random.dart';
 
 part 'game_state.dart';
 
 class GameCubit extends Cubit<GameState> {
-  GameCubit() : super(const GameInitial()) {
+  GameCubit({this.onMatchAnswer, this.onMatchFinished}) : super(const GameInitial()) {
     _initializeLetters();
   }
+
+  /// Match play: a category was answered. [categoryIndex] is its place in
+  /// the round as dealt, whatever order the player took them in.
+  final void Function(int categoryIndex, String word, int points)? onMatchAnswer;
+
+  /// Match play: every category in the round is answered
+  final VoidCallback? onMatchFinished;
 
   Timer? _timer;
   Timer? _hintTimer;
@@ -43,6 +51,10 @@ class GameCubit extends Cubit<GameState> {
   int _run = 0;
   final _dictionary = CategoryDictionary.instance;
   final _random = Random();
+
+  // Lays out the board and sends shooting stars. Seeded per category in a
+  // match, so every player gets the same stars, orbs and shooting stars.
+  late Random _layoutRandom = _random;
 
   // Background time tracking - prevent cheating by backgrounding the app
   DateTime? _backgroundedAt;
@@ -225,6 +237,7 @@ class GameCubit extends Cubit<GameState> {
     // Held by a blocking modal. Pausing does NOT stop the clock - the pause
     // menu can't be used to buy thinking time.
     if (_timerHeld) return;
+    if (state.matchRound case final round?) return _tickMatch(round);
 
     if (state.timeRemaining > 0) {
       final newTime = state.timeRemaining - 1;
@@ -305,6 +318,10 @@ class GameCubit extends Cubit<GameState> {
     AudioService.instance.play(GameSound.jackpotReveal);
     HapticService.instance.medium();
 
+    final match = state.matchRound;
+    if (match != null && !state.isPlaying) return; // Round ended mid-reveal
+    _layoutRandom = match == null ? _random : SeededRandom(_categorySeed(match, state.category));
+
     // Generate letters AND mystery orbs together in the same grid (like Scrabble blanks)
     final result = _generateLettersAndMysteryOrbs(
       state.category,
@@ -354,7 +371,7 @@ class GameCubit extends Cubit<GameState> {
             lettersOnly.hasMatch(w) &&
             w.replaceAll(' ', '').length <= WordPreviewConfig.maxLetters)
         .toList()
-      ..shuffle(_random);
+      ..shuffle(_layoutRandom);
 
     final paths = <List<int>>[];
     for (final word in candidates) {
@@ -374,21 +391,24 @@ class GameCubit extends Cubit<GameState> {
   /// one; one that burns out uncaught may be followed by another.
   void _scheduleShootingStar({required bool first}) {
     _shootingStarBankedAt = null;
-    if (first && _random.nextInt(100) >= ShootingStarConfig.chancePercent) {
+    if (first && _layoutRandom.nextInt(100) >= ShootingStarConfig.chancePercent) {
       _shootingStarDueAt = null;
       return;
     }
     final (lo, hi) = first
         ? (ShootingStarConfig.minDelaySeconds, ShootingStarConfig.maxDelaySeconds)
         : (ShootingStarConfig.minGapSeconds, ShootingStarConfig.maxGapSeconds);
-    _shootingStarDueAt = _secondsOnCategory + lo + _random.nextInt(hi - lo + 1);
+    _shootingStarDueAt = _secondsOnCategory + lo + _layoutRandom.nextInt(hi - lo + 1);
   }
 
-  /// Its letter is in the word being built (current drag or a banked segment)
-  bool get _shootingStarInWord =>
-      state.shootingStar != null &&
-      (state.selectedLetterIds.contains(ShootingStarConfig.letterId) ||
-          _shootingStarBankedAt != null);
+  /// Its letter is in the word being built (current drag or a banked
+  /// segment) - from the shooting star itself or a board star sharing it
+  bool get _shootingStarInWord {
+    if (state.shootingStar == null) return false;
+    if (_shootingStarBankedAt != null) return true;
+    final bonusIds = state.bonusLetterIds;
+    return state.selectedLetterIds.any(bonusIds.contains);
+  }
 
   /// Once a second: streak one in when it's due, or count it down and let
   /// it burn out. Never pulled out of a word that's using it.
@@ -423,8 +443,8 @@ class GameCubit extends Cubit<GameState> {
     final letter = _pickShootingStarLetter();
     if (letter == null) return false;
 
-    final fromLeft = _random.nextBool();
-    final from = Offset(fromLeft ? -0.15 : 1.15, -0.1 + _random.nextDouble() * 0.3);
+    final fromLeft = _layoutRandom.nextBool();
+    final from = Offset(fromLeft ? -0.15 : 1.15, -0.1 + _layoutRandom.nextDouble() * 0.3);
 
     AudioService.instance.play(GameSound.shootingStar);
     HapticService.instance.light();
@@ -441,14 +461,16 @@ class GameCubit extends Cubit<GameState> {
       shootingStar: ShootingStar(
         letter: letter,
         from: from,
-        secondsLeft: ShootingStarConfig.lifetimeSeconds,
+        secondsLeft: ShootingStarConfig.lifetimeFor(state.letterRound),
+        lifetime: ShootingStarConfig.lifetimeFor(state.letterRound),
       ),
     ));
     return true;
   }
 
-  /// A letter from a random answer (never its first letter, which the
-  /// board always has), so the bonus can always be worked into a word
+  /// A letter from a random answer, so the bonus can always be worked into
+  /// a word. Never the starting letter: board stars sharing the bonus letter
+  /// carry the bonus too, and every answer starts with that one.
   String? _pickShootingStarLetter() {
     final start = state.currentLetter;
     if (start == null) return null;
@@ -457,10 +479,13 @@ class GameCubit extends Cubit<GameState> {
         .getWordsForCategoryAndLetter(state.category, start)
         .map((w) => w.toUpperCase().replaceAll(' ', ''))
         .where(lettersOnly.hasMatch)
-        .toList();
-    if (words.isEmpty) return null;
-    final word = words[_random.nextInt(words.length)];
-    return word[1 + _random.nextInt(word.length - 1)];
+        .toList()
+      ..shuffle(_layoutRandom);
+    for (final word in words) {
+      final choices = word.substring(1).split('').where((c) => c != start).toList();
+      if (choices.isNotEmpty) return choices[_layoutRandom.nextInt(choices.length)];
+    }
+    return null;
   }
 
   /// The roomiest of a handful of random spots on the board
@@ -474,9 +499,9 @@ class GameCubit extends Cubit<GameState> {
     var bestGap = -1.0;
     for (var i = 0; i < 40; i++) {
       final spot = Offset(
-        LayoutConfig.gridPaddingX + _random.nextDouble() * (1 - 2 * LayoutConfig.gridPaddingX),
+        LayoutConfig.gridPaddingX + _layoutRandom.nextDouble() * (1 - 2 * LayoutConfig.gridPaddingX),
         LayoutConfig.gridPaddingY +
-            _random.nextDouble() * (LayoutConfig.gridAvailableHeight - LayoutConfig.gridPaddingY),
+            _layoutRandom.nextDouble() * (LayoutConfig.gridAvailableHeight - LayoutConfig.gridPaddingY),
       );
       final gap = taken.isEmpty ? 1.0 : taken.map((t) => _distance(spot, t)).reduce(min);
       if (gap > bestGap) {
@@ -550,7 +575,7 @@ class GameCubit extends Cubit<GameState> {
       final nonVowels = neededLetters.where((l) =>
         !vowels.contains(l) && l != letter // Don't replace the starting letter
       ).toList();
-      nonVowels.shuffle(_random);
+      nonVowels.shuffle(_layoutRandom);
 
       for (final l in nonVowels) {
         if (lettersToReplace.length >= _mysteryOrbCount) break;
@@ -641,8 +666,8 @@ class GameCubit extends Cubit<GameState> {
         if (gridPositions.length >= totalItems) break;
         final baseX = paddingX + (col + 0.5) * cellWidth;
         final baseY = paddingY + (row + 0.5) * cellHeight;
-        final x = baseX + (_random.nextDouble() - 0.5) * 2 * jitterX;
-        final y = baseY + (_random.nextDouble() - 0.5) * 2 * jitterY;
+        final x = baseX + (_layoutRandom.nextDouble() - 0.5) * 2 * jitterX;
+        final y = baseY + (_layoutRandom.nextDouble() - 0.5) * 2 * jitterY;
         gridPositions.add(Offset(
           x.clamp(paddingX, 1.0 - paddingX),
           y.clamp(paddingY, maxY),
@@ -651,7 +676,7 @@ class GameCubit extends Cubit<GameState> {
     }
 
     // Shuffle for random initial assignment
-    gridPositions.shuffle(_random);
+    gridPositions.shuffle(_layoutRandom);
 
     // Step 2: Assign letters to positions randomly
     var positions = <String, Offset>{};
@@ -1060,8 +1085,9 @@ class GameCubit extends Cubit<GameState> {
     // Add orb to selection
     final newSelection = [...state.selectedLetterIds, orbId];
 
-    // Check if this orb's effect has already been triggered
-    if (!orb.effectTriggered) {
+    // Check if this orb's effect has already been triggered (matches play
+    // orbs as plain wildcards, so every player's board stays the same)
+    if (!orb.effectTriggered && !state.isMatch) {
       // Mark orb as effect triggered
       final updatedOrbs = state.mysteryOrbs.map((o) {
         if (o.id == orbId) {
@@ -1244,7 +1270,7 @@ class GameCubit extends Cubit<GameState> {
         final orb = state.mysteryOrbs[orbIndex];
 
         // Check if this orb's effect has already been triggered
-        if (!orb.effectTriggered) {
+        if (!orb.effectTriggered && !state.isMatch) {
           // Mark orb as effect triggered (but still active for word building)
           final updatedOrbs = state.mysteryOrbs.map((o) {
             if (o.id == id) {
@@ -1534,7 +1560,7 @@ class GameCubit extends Cubit<GameState> {
 
     // Commit current selection + space, then clear selection for fresh drag
     final newCommitted = state.committedWord + state.currentSelection + ' ';
-    if (state.selectedLetterIds.contains(ShootingStarConfig.letterId)) {
+    if (state.selectedLetterIds.any(state.bonusLetterIds.contains)) {
       _shootingStarBankedAt = newCommitted.length;
     }
     emit(state.copyWith(
@@ -1570,6 +1596,7 @@ class GameCubit extends Cubit<GameState> {
   /// Skips current category and adds 15 seconds. Can only be used once per letter round.
   /// Returns true if cheat was activated, false if already used or not in playing phase
   bool skipCategoryCheat() {
+    if (state.isMatch) return false;
     // Only works during active gameplay
     if (state.phase != GamePhase.playingRound) return false;
     // Can only use once per letter round
@@ -1702,8 +1729,9 @@ class GameCubit extends Cubit<GameState> {
       letterRound: state.letterRound,
     );
 
-    // Deduct 10 seconds for using a hint
-    final newTime = state.timeRemaining - _hintTimeCost;
+    // Deduct 10 seconds for using a hint (a match's clock is shared - its
+    // hints are rationed per round instead)
+    final newTime = state.isMatch ? state.timeRemaining : state.timeRemaining - _hintTimeCost;
 
     // Track this hint word as used for this category
     final updatedUsedHints = Map<String, List<String>>.from(state.usedHintWords);
@@ -2152,6 +2180,8 @@ class GameCubit extends Cubit<GameState> {
       );
     }
 
+    // A match's clock is shared - no time to win
+    if (state.isMatch) timeBonus = 0;
     final newTime = state.timeRemaining + timeBonus;
 
     // Dramatic haptic feedback for pure connection, simpler for regular time bonus
@@ -2184,6 +2214,17 @@ class GameCubit extends Cubit<GameState> {
       isPureConnection: false,
       isStuck: false,
     ));
+
+    if (state.matchRound case final match?) {
+      onMatchAnswer?.call(match.categories.indexOf(state.category), word, wordScore);
+      if (nextCategoryIndex >= GameState.categoriesPerLetter) {
+        // Last one in - the round ends for everyone
+        _timer?.cancel();
+        emit(state.copyWith(completedWords: newWords, categoryIndex: nextCategoryIndex, isPlaying: false));
+        onMatchFinished?.call();
+        return;
+      }
+    }
 
     // Delay transition to allow celebration animation to play
     final celebrationDelay = wasPureConnection
@@ -2456,8 +2497,10 @@ class GameCubit extends Cubit<GameState> {
       isPureConnection: state.isPureConnection,
     );
 
-    // Deduct time penalty for wrong answer
-    final newTime = (state.timeRemaining - TimeConfig.wrongAnswerPenalty).clamp(0, 999);
+    // Deduct time penalty for wrong answer (not from a match's shared clock)
+    final newTime = state.isMatch
+        ? state.timeRemaining
+        : (state.timeRemaining - TimeConfig.wrongAnswerPenalty).clamp(0, 999);
 
     _wrongAttemptsOnCategory++;
 
@@ -2473,7 +2516,7 @@ class GameCubit extends Cubit<GameState> {
       isStuck: _looksStuck,
     ));
 
-    if (newTime <= 0) {
+    if (newTime <= 0 && !state.isMatch) {
       _timeUp();
     }
   }
@@ -2800,7 +2843,7 @@ class GameCubit extends Cubit<GameState> {
   /// Returns true if skip was successful, false if not enough stars
   bool skipCategoryWithStar() {
     // Only works during active gameplay
-    if (state.phase != GamePhase.playingRound) return false;
+    if (state.phase != GamePhase.playingRound || state.isMatch) return false;
     // Need at least 1 star
     if (state.stars < StarConfig.skipCategoryCost) return false;
     // Need a current letter/category to skip
@@ -2896,6 +2939,7 @@ class GameCubit extends Cubit<GameState> {
   /// Stores the current timestamp and pauses the timer
   void onAppPaused() {
     if (!state.isPlaying) return; // Only track if actively playing
+    if (state.isMatch) return; // A match's clock runs off the server
     _persistMidLetterProgress(); // App may be killed in the background
 
     _backgroundedAt = DateTime.now();
@@ -2941,6 +2985,7 @@ class GameCubit extends Cubit<GameState> {
   /// Phases where the pause menu is available
   bool get canPause =>
       !state.isPaused &&
+      !state.isMatch && // Nobody else stops for you
       (state.phase == GamePhase.spinningWheel ||
           state.phase == GamePhase.categoryReveal ||
           state.phase == GamePhase.playingRound);
@@ -3003,6 +3048,144 @@ class GameCubit extends Cubit<GameState> {
       hintsRemaining: min(state.hintsRemaining, _letterStartHints ?? state.hintsRemaining),
     );
   }
+
+  // ============================================
+  // MATCH PLAY (multiplayer)
+  // ============================================
+
+  /// Play a multiplayer round: its letter and categories, on boards laid out
+  /// from the round's seed, against its shared clock
+  void startMatchRound(MatchRound round) {
+    _run++; // Drop transitions still pending from the last round
+    _timer?.cancel();
+    _hintTimer?.cancel();
+    _dwellTimer?.cancel();
+    _pendingLetterId = null;
+    _pendingLetterEnteredAt = null;
+    _lastDragPosition = null;
+    _lastDragTime = null;
+    _resetStuckTracking();
+
+    emit(state.copyWith(
+      matchRound: round,
+      // Difficulty (orbs, shooting stars, hints) ramps across the match
+      letterRound: MultiplayerConfig.difficultyRound(round.number),
+      currentLetter: round.letter,
+      currentCategories: round.categories,
+      categoryIndex: 0,
+      category: round.categories.first,
+      letterRoundStartScore: state.score,
+      completedWords: [],
+      selectedLetterIds: [],
+      committedWord: '',
+      phase: GamePhase.categoryReveal,
+      isPlaying: true,
+      timeRemaining: _matchSecondsLeft(round),
+      hintsRemaining: MultiplayerConfig.hintsPerRound,
+      clearHintWord: true,
+      clearUsedHintWords: true,
+      clearLastAnswerCorrect: true,
+      clearLastTimeBonus: true,
+      mysteryOrbs: [],
+      scoreMultiplierActive: false,
+      clearLastMysteryOutcome: true,
+      clearPendingMysteryOrb: true,
+      clearMysteryOrbDwellStartTime: true,
+      clearPendingLetterId: true,
+      clearLetterDwellStartTime: true,
+      spaceUsageCount: 0,
+      repeatUsageCount: 0,
+      isPureConnection: false,
+      showConnectionAnimation: false,
+      isDragging: false,
+      clearDragPosition: true,
+      approachingLetterIds: [],
+      isPaused: false,
+      isStuck: false,
+      previewPaths: const [],
+      clearShootingStar: true,
+      clearLastShootingStarBonus: true,
+    ));
+    _startTimer();
+  }
+
+  /// The round is over (someone finished, or the clock ran out): freeze the
+  /// board where it is
+  void endMatchRound() {
+    if (!state.isMatch) return;
+    _run++;
+    _timer?.cancel();
+    _hintTimer?.cancel();
+    _dwellTimer?.cancel();
+    _pendingLetterId = null;
+    _pendingLetterEnteredAt = null;
+    emit(state.copyWith(
+      isPlaying: false,
+      isDragging: false,
+      clearDragPosition: true,
+      approachingLetterIds: [],
+      clearPendingLetterId: true,
+      clearLetterDwellStartTime: true,
+      clearPendingMysteryOrb: true,
+      clearMysteryOrbDwellStartTime: true,
+      clearHintWord: true,
+    ));
+  }
+
+  /// Match play: leave this category for later - it goes to the back of the
+  /// queue. Returns false if it's the only one left.
+  bool skipMatchCategory() {
+    if (!state.isMatch || !state.isPlaying) return false;
+    if (state.phase != GamePhase.playingRound) return false;
+    if (state.lastAnswerCorrect == true) return false; // Celebrating
+    final index = state.categoryIndex;
+    if (state.currentCategories.length - index <= 1) return false;
+
+    AudioService.instance.play(GameSound.buttonTap);
+    HapticService.instance.selection();
+    _hintTimer?.cancel();
+    _dwellTimer?.cancel();
+    _pendingLetterId = null;
+    _pendingLetterEnteredAt = null;
+
+    final order = [...state.currentCategories];
+    order.add(order.removeAt(index));
+    emit(state.copyWith(
+      currentCategories: order,
+      category: order[index],
+      phase: GamePhase.categoryReveal,
+      selectedLetterIds: [],
+      committedWord: '',
+      spaceUsageCount: 0,
+      repeatUsageCount: 0,
+      isPureConnection: false,
+      isDragging: false,
+      clearDragPosition: true,
+      approachingLetterIds: [],
+      clearLastAnswerCorrect: true,
+      clearHintWord: true,
+      clearPendingLetterId: true,
+      clearLetterDwellStartTime: true,
+    ));
+    return true;
+  }
+
+  void _tickMatch(MatchRound round) {
+    final left = _matchSecondsLeft(round);
+    if (state.phase == GamePhase.playingRound) _secondsOnCategory++;
+    emit(state.copyWith(timeRemaining: left, isStuck: _looksStuck));
+    _playTimeWarning(left);
+    _tickShootingStar();
+    // The match session ends the round for everyone
+    if (left <= 0) _timer?.cancel();
+  }
+
+  int _matchSecondsLeft(MatchRound round) =>
+      max(0, (round.endsAt.difference(DateTime.now()).inMilliseconds / 1000).ceil());
+
+  /// Each category of a round gets its own board, the same for everyone
+  static int _categorySeed(MatchRound round, String category) =>
+      (round.seed + 0x9E3779B9 * (round.categories.indexOf(category) + 1)) & 0xFFFFFFFF;
 
   @override
   Future<void> close() {

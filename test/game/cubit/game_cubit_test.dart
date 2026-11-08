@@ -42,7 +42,8 @@ GameCubit withShootingStar(GameCubit cubit, String letter) {
     shootingStar: ShootingStar(
       letter: letter,
       from: cubit.state.shootingStar!.from,
-      secondsLeft: ShootingStarConfig.lifetimeSeconds,
+      secondsLeft: cubit.state.shootingStar!.lifetime,
+      lifetime: cubit.state.shootingStar!.lifetime,
     ),
   ));
   return cubit;
@@ -276,7 +277,8 @@ void main() {
       final star = cubit.state.shootingStar!;
       final node = cubit.state.letters.singleWhere((l) => l.id == starId);
       expect(node.letter, star.letter);
-      expect(star.secondsLeft, ShootingStarConfig.lifetimeSeconds);
+      expect(star.secondsLeft, ShootingStarConfig.lifetimeFor(1));
+      expect(star.letter, isNot('C'), reason: 'never the starting letter');
       // It lands on the board, clear of the other stars
       expect(node.position.dx, inInclusiveRange(0.0, 1.0));
       expect(node.position.dy, inInclusiveRange(0.0, 1.0));
@@ -309,11 +311,27 @@ void main() {
       await cubit.close();
     });
 
-    testWidgets('a word without it scores normally', (tester) async {
+    testWidgets('a board star sharing its letter doubles points too', (tester) async {
+      final plain = playingRound();
+      submit(plain, idsFor(plain, 'CAT'));
+      final base = plain.state.score;
+
+      final cubit = withShootingStar(playingRound(), 'A');
+      expect(cubit.state.bonusLetterIds, {starId, ...idsFor(cubit, 'A')});
+      submit(cubit, idsFor(cubit, 'CAT')); // The board's own A
+      expect(cubit.state.lastShootingStarBonus, isNotNull);
+      expect(cubit.state.score, greaterThan(base));
+
+      await tester.pump(const Duration(seconds: 3));
+      await plain.close();
+      await cubit.close();
+    });
+
+    testWidgets('a word without its letter scores normally', (tester) async {
       final plain = playingRound();
       submit(plain, idsFor(plain, 'CAT'));
 
-      final cubit = withShootingStar(playingRound(), 'A');
+      final cubit = withShootingStar(playingRound(), 'O');
       submit(cubit, idsFor(cubit, 'CAT'));
       expect(cubit.state.score, plain.state.score);
       expect(cubit.state.lastShootingStarBonus, isNull);
@@ -325,7 +343,8 @@ void main() {
 
     testWidgets('burns out if nobody catches it', (tester) async {
       final cubit = withShootingStar(playingRound(), 'A');
-      await tester.pump(const Duration(seconds: ShootingStarConfig.lifetimeSeconds - 1));
+      final lifetime = cubit.state.shootingStar!.lifetime;
+      await tester.pump(Duration(seconds: lifetime - 1));
       expect(cubit.state.shootingStar!.isFading, isTrue);
       expect(cubit.state.letters.any((l) => l.id == starId), isTrue);
 
@@ -338,8 +357,8 @@ void main() {
     testWidgets('never burns out of a word that is using it', (tester) async {
       final cubit = withShootingStar(playingRound(), 'A');
       cubit.selectLetter(idsFor(cubit, 'C').single);
-      cubit.selectLetter(starId);
-      await tester.pump(const Duration(seconds: ShootingStarConfig.lifetimeSeconds + 3));
+      cubit.selectLetter(idsFor(cubit, 'A').single); // Its twin on the board
+      await tester.pump(Duration(seconds: cubit.state.shootingStar!.lifetime + 3));
       expect(cubit.state.shootingStar, isNotNull);
       expect(cubit.state.currentSelection, 'CA');
 
@@ -348,6 +367,17 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       expect(cubit.state.shootingStar, isNull);
       await cubit.close();
+    });
+
+    test('lingers longer in early rounds', () {
+      final early = playingRound(letterRound: 1);
+      final late = playingRound(letterRound: 20);
+      expect(early.spawnShootingStar(), isTrue);
+      expect(late.spawnShootingStar(), isTrue);
+      expect(
+        early.state.shootingStar!.lifetime,
+        greaterThan(late.state.shootingStar!.lifetime),
+      );
     });
 
     test('the next category starts without it', () {

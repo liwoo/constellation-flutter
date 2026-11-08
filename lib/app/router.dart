@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:constellation_app/splash/splash.dart';
 import 'package:constellation_app/main_menu/main_menu.dart';
 import 'package:constellation_app/game/game.dart';
+import 'package:constellation_app/multiplayer/multiplayer.dart';
 import 'package:constellation_app/practice/practice.dart';
 import 'package:constellation_app/settings/settings.dart';
 
@@ -46,6 +47,24 @@ class AppRouter {
           name: 'alpha-quest',
           pageBuilder: (context, state) =>
               MaterialPage(key: state.pageKey, child: const AlphaQuestPage()),
+        ),
+
+        // Multiplayer route (an invite link carries the room code)
+        GoRoute(
+          path: '/multiplayer',
+          name: 'multiplayer',
+          pageBuilder: (context, state) =>
+              MaterialPage(key: state.pageKey, child: const MultiplayerPage()),
+          routes: [
+            GoRoute(
+              path: ':code',
+              name: 'multiplayer-join',
+              pageBuilder: (context, state) => MaterialPage(
+                key: state.pageKey,
+                child: MultiplayerPage(joinCode: state.pathParameters['code']),
+              ),
+            ),
+          ],
         ),
 
         // Settings route

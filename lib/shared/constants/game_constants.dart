@@ -278,8 +278,13 @@ class ShootingStarConfig {
   /// Chance (percent) that a category gets a shooting star at all
   static const int chancePercent = 70;
 
-  /// Seconds the bonus letter stays on the board
-  static const int lifetimeSeconds = 12;
+  /// Seconds the bonus letter stays on the board - longer early on, while
+  /// players are still learning to spot it and work it into a word
+  static int lifetimeFor(int round) => switch (round) {
+        <= 5 => 20,
+        <= 12 => 16,
+        _ => 12,
+      };
 
   /// It flickers in its final seconds
   static const int fadingSeconds = 3;
@@ -378,3 +383,47 @@ class LayoutConfig {
   static const double qwertyRow3Indent = 0.12;
 }
 
+
+/// Realtime multiplayer: friends race through the same rounds, boards and
+/// shooting stars. First to answer every category ends the round for all.
+class MultiplayerConfig {
+  const MultiplayerConfig._();
+
+  /// Rounds in a full match (one letter, five categories each)
+  static const int rounds = 8;
+
+  /// Players a lobby holds, and the fewest a match can start with
+  static const int maxPlayers = 6;
+  static const int minPlayers = 2;
+
+  /// Hard cap on a round if nobody finishes (seconds)
+  static const int roundSeconds = 180;
+
+  /// Scoreboard between rounds (seconds)
+  static const int scoreboardSeconds = 30;
+
+  /// Countdown before the first round (seconds)
+  static const int introSeconds = 5;
+
+  /// Hints each player gets per round (free - the clock is shared)
+  static const int hintsPerRound = 1;
+
+  /// A word nobody else found for that category scores this many times its
+  /// points; a word someone else also found scores its points once
+  static const int uniqueMultiplier = 2;
+
+  /// Answers landing this long after the round ended still count (network
+  /// photo finishes) (milliseconds)
+  static const int lateAnswerGraceMs = 1500;
+
+  /// Room codes: no 0/O or 1/I lookalikes
+  static const String codeAlphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  static const int codeLength = 5;
+
+  /// Longest display name
+  static const int maxNameLength = 14;
+
+  /// Match round N plays at the difficulty of single-player round
+  /// 1, 4, 7 ... 22 - letters, mystery orbs and shooting stars ramp the same
+  static int difficultyRound(int round) => 1 + (round - 1) * 3;
+}
