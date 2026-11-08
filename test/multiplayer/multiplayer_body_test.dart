@@ -53,6 +53,28 @@ void main() {
     await ben.joinRoom(ana.state.room!.code, 'Ben');
     await settle();
     expect(find.text('Ben'), findsOneWidget);
+
+    // Spell the shared warm-up word to mark a seat ready
+    Future<void> warmUp(MultiplayerCubit seat) async {
+      final word = seat.state.room!.setup!.practiceWord;
+      for (final c in word.split('')) {
+        final node = seat.game.state.letters.firstWhere((l) => l.letter == c);
+        seat.game.selectLetter(node.id);
+      }
+      seat.game.submitWord();
+      await settle();
+    }
+
+    // Host starts: the warm-up comes first, not the scored rounds
+    await tester.tap(find.text('START GAME'));
+    await settle();
+    expect(find.text('WARM-UP'), findsOneWidget);
+
+    await warmUp(ben);
+    await warmUp(ana);
+    expect(find.text("YOU'RE READY"), findsOneWidget);
+
+    // Everyone's ready: the host kicks off scoring
     await tester.tap(find.text('START GAME'));
     await settle();
     expect(find.text('ROUND 1 OF 8'), findsOneWidget);
@@ -64,7 +86,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
     expect(ana.game.state.phase, GamePhase.playingRound);
-    expect(find.text('LATER'), findsOneWidget);
+    expect(find.text('LATER'), findsNothing, reason: 'no skipping in multiplayer');
 
     var guard = 0;
     while (ana.game.state.isPlaying && guard++ < 20) {

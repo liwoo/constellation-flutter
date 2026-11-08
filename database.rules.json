@@ -41,7 +41,16 @@
         "state": {
           ".write": "auth != null && root.child('rooms').child($code).child('players').child(auth.uid).exists()",
           "status": {
-            ".validate": "newData.val() === 'lobby' || newData.val() === 'playing' || newData.val() === 'finished'"
+            ".validate": "newData.val() === 'lobby' || newData.val() === 'practice' || newData.val() === 'playing' || newData.val() === 'finished'"
+          }
+        },
+        "ready": {
+          // Cleared by a player at the table when the warm-up ends
+          ".write": "auth != null && !newData.exists() && root.child('rooms').child($code).child('players').child(auth.uid).exists()",
+          "$uid": {
+            // Your own ready flag only, while seated
+            ".write": "auth != null && auth.uid === $uid && root.child('rooms').child($code).child('players').child(auth.uid).exists()",
+            ".validate": "newData.isBoolean()"
           }
         },
         "answers": {

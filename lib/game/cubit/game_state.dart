@@ -227,6 +227,9 @@ class GameState extends Equatable {
     this.lives = LivesConfig.startingLives,
     // Multiplayer round being played (null in single player)
     this.matchRound,
+    // Multiplayer warm-up: the shared word everyone spells before scoring
+    // (null unless this board is a practice board)
+    this.practiceWord,
   });
 
   /// Special ID for space character in selectedLetterIds
@@ -320,6 +323,12 @@ class GameState extends Equatable {
 
   /// Playing a multiplayer match round
   bool get isMatch => matchRound != null;
+
+  /// The shared word to spell in the multiplayer warm-up (null in play)
+  final String? practiceWord;
+
+  /// This board is a multiplayer practice board, not a scoring round
+  bool get isPractice => practiceWord != null;
 
   /// Points earned in current letter round
   int get pointsEarnedInRound => score - letterRoundStartScore;
@@ -442,6 +451,7 @@ class GameState extends Equatable {
         lastShootingStarBonus,
         lives,
         matchRound,
+        practiceWord,
       ];
 
   GameState copyWith({
@@ -512,6 +522,9 @@ class GameState extends Equatable {
     bool clearLastShootingStarBonus = false,
     int? lives,
     MatchRound? matchRound,
+    bool clearMatchRound = false,
+    String? practiceWord,
+    bool clearPracticeWord = false,
   }) {
     return GameState(
       letters: letters ?? this.letters,
@@ -568,7 +581,8 @@ class GameState extends Equatable {
           ? null
           : (lastShootingStarBonus ?? this.lastShootingStarBonus),
       lives: lives ?? this.lives,
-      matchRound: matchRound ?? this.matchRound,
+      matchRound: clearMatchRound ? null : (matchRound ?? this.matchRound),
+      practiceWord: clearPracticeWord ? null : (practiceWord ?? this.practiceWord),
     );
   }
 }

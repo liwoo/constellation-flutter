@@ -134,8 +134,22 @@ class FirebaseMatchBackend implements MatchBackend {
   Future<void> startMatch(String code, MatchSetup setup) => _room(code).update({
         'setup': setup.toJson(),
         'answers': null,
+        'ready': null,
+        'state': MatchTiming.practice(),
+      });
+
+  @override
+  Future<void> markReady(String code, String uid) => _room(code).child('ready/$uid').set(true);
+
+  @override
+  Future<void> startScoring(String code) => _room(code).update({
+        'ready': null,
         'state': MatchTiming.start(serverNow()),
       });
+
+  @override
+  Future<void> abortMatch(String code) =>
+      _room(code).child('state/status').set(MatchStatus.finished.name);
 
   @override
   Future<void> submitAnswer(
@@ -174,6 +188,7 @@ class FirebaseMatchBackend implements MatchBackend {
   Future<void> backToLobby(String code) => _room(code).update({
         'setup': null,
         'answers': null,
+        'ready': null,
         'state': {'status': MatchStatus.lobby.name},
       });
 

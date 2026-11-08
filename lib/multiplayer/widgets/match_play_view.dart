@@ -304,41 +304,13 @@ class _CategoryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final canSkip = game.currentCategories.length - game.categoryIndex > 1 && game.lastAnswerCorrect != true;
+    // No skipping in multiplayer - everyone races the same categories in turn
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Flexible(child: CategoryBanner(category: game.category)),
-          const SizedBox(width: AppSpacing.sm),
-          if (canSkip)
-            GestureDetector(
-              onTap: context.read<GameCubit>().skipMatchCategory,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(colors: [Color(0xFF9C27B0), Color(0xFF7B1FA2)]),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.accentGold.withAlpha(180), width: 1.5),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.redo_rounded, color: AppColors.accentGold, size: 14),
-                    const SizedBox(width: 3),
-                    Text(
-                      'LATER',
-                      style: GoogleFonts.exo2(
-                        color: AppColors.accentGold,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
           const SizedBox(width: AppSpacing.sm),
           Container(
             width: 36,

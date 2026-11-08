@@ -194,6 +194,46 @@ Future<bool> confirmLeaveMatch(BuildContext context, {required bool midMatch}) a
   return leave ?? false;
 }
 
+/// What the host chose to do from the in-match exit menu
+enum MatchExit { stay, leaveSeat, endGame }
+
+/// The host's exit menu mid-match: end the game for everyone (jump to the
+/// final scores), just leave their own seat, or stay
+Future<MatchExit> chooseMatchExit(BuildContext context) async {
+  final choice = await showDialog<MatchExit>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: AppColors.primaryDarkPurple,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: AppColors.accentGold.withAlpha(100)),
+      ),
+      title: Text('Leave game?', style: GoogleFonts.orbitron(color: AppColors.white)),
+      content: Text(
+        "You're the host. End the game for everyone and jump to the final scores, "
+        'or just leave your own seat and let the match carry on.',
+        style: GoogleFonts.exo2(color: AppColors.white.withAlpha(200)),
+      ),
+      actionsOverflowDirection: VerticalDirection.down,
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, MatchExit.stay),
+          child: Text('STAY', style: GoogleFonts.exo2(color: AppColors.white.withAlpha(150))),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, MatchExit.leaveSeat),
+          child: Text('LEAVE SEAT', style: GoogleFonts.exo2(color: AppColors.white.withAlpha(200))),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, MatchExit.endGame),
+          child: Text('END GAME', style: GoogleFonts.exo2(color: AppColors.accentOrange, fontWeight: FontWeight.bold)),
+        ),
+      ],
+    ),
+  );
+  return choice ?? MatchExit.stay;
+}
+
 /// Body text for the multiplayer screens
 TextStyle matchBodyStyle({double size = 14, Color? color, FontWeight? weight}) => GoogleFonts.exo2(
       color: color ?? AppColors.white.withAlpha(210),

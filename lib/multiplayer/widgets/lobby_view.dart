@@ -250,6 +250,7 @@ class _HowItWorks extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const rules = [
+      (Icons.school_rounded, 'A quick warm-up first: everyone spells the same word, then the host starts'),
       (Icons.grid_view_rounded, '${MultiplayerConfig.rounds} rounds - everyone gets the same letter, categories and stars'),
       (Icons.flag_rounded, 'First to answer all 5 categories ends the round for everyone'),
       (Icons.auto_awesome, 'A word nobody else found scores ${MultiplayerConfig.uniqueMultiplier}x'),

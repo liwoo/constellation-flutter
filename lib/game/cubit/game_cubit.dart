@@ -13,7 +13,8 @@ import 'package:constellation_app/shared/utils/seeded_random.dart';
 part 'game_state.dart';
 
 class GameCubit extends Cubit<GameState> {
-  GameCubit({this.onMatchAnswer, this.onMatchFinished}) : super(const GameInitial()) {
+  GameCubit({this.onMatchAnswer, this.onMatchFinished, this.onPracticeComplete})
+      : super(const GameInitial()) {
     _initializeLetters();
   }
 
@@ -23,6 +24,9 @@ class GameCubit extends Cubit<GameState> {
 
   /// Match play: every category in the round is answered
   final VoidCallback? onMatchFinished;
+
+  /// Multiplayer warm-up: the player spelled the shared practice word
+  final VoidCallback? onPracticeComplete;
 
   Timer? _timer;
   Timer? _hintTimer;
@@ -1822,6 +1826,12 @@ class GameCubit extends Cubit<GameState> {
   void submitWord() {
     if (state.currentWord.length < 2) return;
 
+    // Multiplayer warm-up: the only right answer is the shared practice word
+    if (state.isPractice) {
+      _submitPractice();
+      return;
+    }
+
     final pattern = state.currentWord; // May contain '*' wildcards
 
     // Alpha Quest validation
@@ -2497,8 +2507,9 @@ class GameCubit extends Cubit<GameState> {
       isPureConnection: state.isPureConnection,
     );
 
-    // Deduct time penalty for wrong answer (not from a match's shared clock)
-    final newTime = state.isMatch
+    // Deduct time penalty for wrong answer (not from a match's shared clock,
+    // and never in the clockless warm-up)
+    final newTime = state.isMatch || state.isPractice
         ? state.timeRemaining
         : (state.timeRemaining - TimeConfig.wrongAnswerPenalty).clamp(0, 999);
 
@@ -2516,7 +2527,7 @@ class GameCubit extends Cubit<GameState> {
       isStuck: _looksStuck,
     ));
 
-    if (newTime <= 0 && !state.isMatch) {
+    if (newTime <= 0 && !state.isMatch && !state.isPractice) {
       _timeUp();
     }
   }
@@ -3107,6 +3118,135 @@ class GameCubit extends Cubit<GameState> {
       clearLastShootingStarBonus: true,
     ));
     _startTimer();
+  }
+
+  // ============================================
+  // MATCH WARM-UP (multiplayer practice)
+  // ============================================
+
+  /// Lay out a practice board that spells [word] (the same for everyone, off
+  /// the shared [seed]) and let the player connect it. No clock, no scoring -
+  /// just a check that they know how to play before the match starts.
+  void startPracticeWord({required String word, required int seed}) {
+    _run++;
+    _timer?.cancel();
+    _hintTimer?.cancel();
+    _dwellTimer?.cancel();
+    _pendingLetterId = null;
+    _pendingLetterEnteredAt = null;
+    _lastDragPosition = null;
+    _lastDragTime = null;
+    _resetStuckTracking();
+
+    final upper = word.toUpperCase();
+    _layoutRandom = SeededRandom(seed);
+    final distinct = <String>{
+      for (final c in upper.split(''))
+        if (c.codeUnitAt(0) >= 65 && c.codeUnitAt(0) <= 90) c,
+    };
+    final items = distinct.toList()..sort();
+    final positions = _generatePositionsWithPathClearance(items, [upper]);
+    final letters = [
+      for (final c in items)
+        LetterNode(
+          id: c.codeUnitAt(0) - 'A'.codeUnitAt(0),
+          letter: c,
+          points: LetterPoints.values[c] ?? 1,
+          position: positions[c] ?? const Offset(0.5, 0.5),
+        ),
+    ];
+
+    emit(state.copyWith(
+      practiceWord: upper,
+      clearMatchRound: true, // Practice is not a scoring round
+      currentLetter: upper.isEmpty ? null : upper[0],
+      currentCategories: const [],
+      category: '',
+      categoryIndex: 0,
+      letters: letters,
+      mysteryOrbs: const [],
+      selectedLetterIds: [],
+      committedWord: '',
+      completedWords: [],
+      phase: GamePhase.playingRound,
+      isPlaying: true,
+      timeRemaining: 999, // No clock in the warm-up
+      hintsRemaining: 0,
+      clearHintWord: true,
+      clearUsedHintWords: true,
+      clearLastAnswerCorrect: true,
+      clearLastTimeBonus: true,
+      isPureConnection: false,
+      showConnectionAnimation: false,
+      isDragging: false,
+      clearDragPosition: true,
+      approachingLetterIds: [],
+      clearPendingLetterId: true,
+      clearLetterDwellStartTime: true,
+      clearPendingMysteryOrb: true,
+      clearMysteryOrbDwellStartTime: true,
+      spaceUsageCount: 0,
+      repeatUsageCount: 0,
+      isPaused: false,
+      isStuck: false,
+      clearShootingStar: true,
+      clearLastShootingStarBonus: true,
+    ));
+    // Shimmer the path of the word so players can see how to connect it
+    emit(state.copyWith(previewPaths: [_computeHintLetterSequence(upper)]));
+  }
+
+  /// The player submitted during the warm-up: pass only if it spells the
+  /// shared practice word, otherwise shake and let them try again
+  void _submitPractice() {
+    final attempt = state.currentWord.toUpperCase().replaceAll(RegExp('[^A-Z]'), '');
+    if (attempt != state.practiceWord) {
+      _handleWrongAnswer();
+      return;
+    }
+    AudioService.instance.duckMusic(const Duration(milliseconds: 2200));
+    AudioService.instance.play(GameSound.bubblesRise);
+    AudioService.instance.playDelayed(GameSound.wordCorrect, const Duration(milliseconds: 120));
+    HapticService.instance.success();
+    _timer?.cancel();
+    _hintTimer?.cancel();
+    _dwellTimer?.cancel();
+    _resetStuckTracking();
+    emit(state.copyWith(
+      lastAnswerCorrect: true,
+      isPlaying: false,
+      isDragging: false,
+      showConnectionAnimation: state.isPureConnection,
+      isPureConnection: false,
+      clearDragPosition: true,
+      approachingLetterIds: [],
+      clearPendingLetterId: true,
+      clearLetterDwellStartTime: true,
+      previewPaths: const [],
+    ));
+    onPracticeComplete?.call();
+  }
+
+  /// Tear down the practice board (left the warm-up, or it's starting)
+  void endPractice() {
+    if (!state.isPractice) return;
+    _run++;
+    _timer?.cancel();
+    _hintTimer?.cancel();
+    _dwellTimer?.cancel();
+    _pendingLetterId = null;
+    _pendingLetterEnteredAt = null;
+    emit(state.copyWith(
+      clearPracticeWord: true,
+      isPlaying: false,
+      isDragging: false,
+      clearDragPosition: true,
+      approachingLetterIds: [],
+      clearPendingLetterId: true,
+      clearLetterDwellStartTime: true,
+      clearHintWord: true,
+      previewPaths: const [],
+    ));
   }
 
   /// The round is over (someone finished, or the clock ran out): freeze the
