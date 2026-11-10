@@ -72,9 +72,6 @@ class GameCubit extends Cubit<GameState> {
   static const Duration _dwellTime = Duration(milliseconds: HitDetectionConfig.dwellTimeMs);
   static const double _passThroughVelocity = HitDetectionConfig.passThroughVelocity;
 
-  // Mystery orb count based on round (from constants)
-  int get _mysteryOrbCount => MysteryOrbConfig.getOrbCount(state.letterRound);
-
   // Mystery outcome probabilities from constants
   static const Map<MysteryOutcome, int> _mysteryOutcomeProbabilities = {
     MysteryOutcome.timeBonus: MysteryOrbConfig.timeBonusProbability,
@@ -558,6 +555,13 @@ class GameCubit extends Cubit<GameState> {
     final neededLetters = _getLettersForRound(category, letter).toList();
     neededLetters.sort(); // Sort alphabetically for consistent IDs
 
+    // Most boards get no orbs at all (see MysteryOrbConfig)
+    final orbCount = MysteryOrbConfig.orbsForBoard(
+      state.letterRound,
+      _layoutRandom,
+      isMatch: state.isMatch,
+    );
+
     // Identify letters to replace with mystery orbs (prioritize vowels)
     // This creates jeopardy - players MUST use mystery blanks to complete words
     // NEVER replace the starting letter - player must be able to start their word
@@ -568,20 +572,20 @@ class GameCubit extends Cubit<GameState> {
     // Skip the starting letter even if it's a vowel
     for (final vowel in vowels) {
       if (vowel == letter) continue; // Never replace the starting letter!
-      if (neededLetters.contains(vowel) && lettersToReplace.length < _mysteryOrbCount) {
+      if (neededLetters.contains(vowel) && lettersToReplace.length < orbCount) {
         lettersToReplace.add(vowel);
       }
     }
 
     // If we still need more, replace other letters (avoid the starting letter)
-    if (lettersToReplace.length < _mysteryOrbCount) {
+    if (lettersToReplace.length < orbCount) {
       final nonVowels = neededLetters.where((l) =>
         !vowels.contains(l) && l != letter // Don't replace the starting letter
       ).toList();
       nonVowels.shuffle(_layoutRandom);
 
       for (final l in nonVowels) {
-        if (lettersToReplace.length >= _mysteryOrbCount) break;
+        if (lettersToReplace.length >= orbCount) break;
         lettersToReplace.add(l);
       }
     }

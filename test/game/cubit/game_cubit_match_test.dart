@@ -29,6 +29,16 @@ GameCubit inMatch(
   return cubit;
 }
 
+/// A late match round whose first board happens to carry a mystery orb
+/// (they're rare, so try seeds until one deals one)
+MatchRound roundWithOrb() {
+  for (var seed = 42; seed < 2000; seed++) {
+    final round = matchRound(number: 6, seed: seed);
+    if (inMatch(round).state.mysteryOrbs.isNotEmpty) return round;
+  }
+  throw StateError('no seed dealt a mystery orb');
+}
+
 /// Everything that makes up a board, comparable
 List<Object> board(GameState state) => [
       for (final l in state.letters) (l.id, l.letter, l.position),
@@ -70,11 +80,10 @@ void main() {
 
   group('GameCubit match play', () {
     test('every player gets the same board, orbs and shooting star', () {
-      // A late round, so there are mystery orbs too
-      final round = matchRound(number: 6);
+      final round = roundWithOrb();
       final ana = inMatch(round);
       final ben = inMatch(round);
-      expect(ana.state.mysteryOrbs, isNotEmpty);
+      expect(ana.state.mysteryOrbs, hasLength(MysteryOrbConfig.matchMaxOrbs));
       expect(board(ana.state), board(ben.state));
       expect(ana.state.previewPaths, ben.state.previewPaths);
 
@@ -83,6 +92,18 @@ void main() {
       expect(ana.state.shootingStar!.letter, ben.state.shootingStar!.letter);
       expect(ana.state.shootingStar!.from, ben.state.shootingStar!.from);
       expect(board(ana.state), board(ben.state));
+    });
+
+    test('mystery orbs are rare in a match', () {
+      var boards = 0;
+      var withOrbs = 0;
+      for (var seed = 0; seed < 200; seed++) {
+        final cubit = inMatch(matchRound(number: MultiplayerConfig.rounds, seed: seed));
+        boards++;
+        if (cubit.state.mysteryOrbs.isNotEmpty) withOrbs++;
+        expect(cubit.state.mysteryOrbs.length, lessThanOrEqualTo(MysteryOrbConfig.matchMaxOrbs));
+      }
+      expect(withOrbs / boards, lessThan(0.2), reason: '$withOrbs of $boards boards');
     });
 
     test('each category and each match gets its own board', () {
@@ -165,7 +186,7 @@ void main() {
     });
 
     test('mystery orbs are plain wildcards - no surprises', () {
-      final cubit = inMatch(matchRound(number: 6));
+      final cubit = inMatch(roundWithOrb());
       final orb = cubit.state.mysteryOrbs.first;
       cubit.selectLetter(cubit.state.letters.firstWhere((l) => l.letter == 'C').id);
       cubit.startDrag(orb.position);

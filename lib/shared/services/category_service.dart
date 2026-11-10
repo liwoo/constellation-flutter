@@ -155,6 +155,12 @@ class CategoryService {
     '58_rappers.json',
     '59_nba_players.json',
     '60_anime.json',
+    '61_bible_characters.json',
+    '62_historical_leaders.json',
+    '63_african_tribes_and_languages.json',
+    '64_school_stuff.json',
+    '65_hollywood_stars.json',
+    '66_authors.json',
   ];
 
   /// Initialize and load categories from assets
