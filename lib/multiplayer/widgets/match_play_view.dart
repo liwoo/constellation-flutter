@@ -69,6 +69,14 @@ class MatchPlayView extends StatelessWidget {
               ),
             ),
 
+            // A slip autocorrected - say what it counted as
+            Positioned(
+              top: MediaQuery.of(context).size.height * 0.54,
+              left: 0,
+              right: 0,
+              child: Center(child: AutocorrectCallout(word: game.lastAutocorrectedWord)),
+            ),
+
             if (roundOver) Positioned.fill(child: _RoundOverBanner(mp: mp)),
           ],
         );

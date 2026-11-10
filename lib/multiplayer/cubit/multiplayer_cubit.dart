@@ -226,19 +226,14 @@ class MultiplayerCubit extends Cubit<MultiplayerState> {
     ));
   }
 
-  void _onAnswer(int category, String word, int points) {
+  void _onAnswer(MatchSubmission answer) {
     final room = state.room;
     final round = _playingRound;
     final uid = state.uid;
-    if (room == null || round == null || uid == null || category < 0) return;
-    _writes = _writes.then((_) => _backend().submitAnswer(
-          room.code,
-          round: round,
-          category: category,
-          uid: uid,
-          word: word,
-          points: points,
-        )).catchError((Object e) => debugPrint('Multiplayer: answer not saved - $e'));
+    if (room == null || round == null || uid == null || answer.category < 0) return;
+    _writes = _writes
+        .then((_) => _backend().submitAnswer(room.code, round: round, uid: uid, answer: answer))
+        .catchError((Object e) => debugPrint('Multiplayer: answer not saved - $e'));
   }
 
   /// Every category answered: this player ends the round for everyone, once

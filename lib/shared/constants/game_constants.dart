@@ -44,6 +44,24 @@ class ScoringConfig {
   static const double mysteryScoreMultiplier = 1.5;
 }
 
+/// Spelling slips forgiven on long answers, which are hard to drag cleanly.
+/// Short words aren't corrected - one letter off is usually a different word.
+class AutocorrectConfig {
+  const AutocorrectConfig._();
+
+  /// Shortest answer (letters, no spaces) that gets corrected
+  static const int minLength = 6;
+
+  /// Answers this long or longer may be two letters off, shorter ones one
+  static const int twoEditLength = 8;
+
+  /// Share of the word's points a corrected answer scores
+  static const double pointsShare = 0.5;
+
+  /// Letters a typed pattern may be off from [answer] and still count
+  static int maxEdits(String answer) => answer.length >= twoEditLength ? 2 : 1;
+}
+
 /// Time bonus and penalty configuration
 class TimeConfig {
   const TimeConfig._();

@@ -292,6 +292,15 @@ class _AnswerChip extends StatelessWidget {
               weight: FontWeight.bold,
             ),
           ),
+          // Why the same word can score differently
+          if (answer.caughtStar) ...[
+            const SizedBox(width: 3),
+            const Icon(Icons.star_rounded, color: AppColors.accentYellow, size: 13),
+          ],
+          if (answer.isAutocorrected) ...[
+            const SizedBox(width: 3),
+            Icon(Icons.spellcheck, color: AppColors.white.withAlpha(150), size: 13),
+          ],
           if (answer.isUnique) ...[
             const SizedBox(width: 3),
             const Icon(Icons.auto_awesome, color: AppColors.accentGold, size: 12),

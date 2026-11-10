@@ -21,7 +21,7 @@ MatchRound matchRound({int number = 1, int seed = 42}) => MatchRound(
 /// A match board for [round], first category revealed
 GameCubit inMatch(
   MatchRound round, {
-  void Function(int category, String word, int points)? onAnswer,
+  void Function(MatchSubmission answer)? onAnswer,
   void Function()? onFinished,
 }) {
   final cubit = GameCubit(onMatchAnswer: onAnswer, onMatchFinished: onFinished)..startMatchRound(round);
@@ -120,8 +120,8 @@ void main() {
     });
 
     testWidgets('answers report their dealt category; the shared clock never moves', (tester) async {
-      final answers = <(int, String, int)>[];
-      final cubit = inMatch(matchRound(), onAnswer: (c, w, p) => answers.add((c, w, p)));
+      final answers = <MatchSubmission>[];
+      final cubit = inMatch(matchRound(), onAnswer: answers.add);
       final time = cubit.state.timeRemaining;
 
       // Wrong answers cost nothing
@@ -135,8 +135,9 @@ void main() {
       cubit.onCategoryRevealed();
       submit(cubit, spellable(cubit.state)!);
       expect(cubit.state.lastAnswerCorrect, isTrue);
-      expect(answers.single.$1, 1);
-      expect(answers.single.$3, greaterThan(0));
+      expect(answers.single.category, 1);
+      expect(answers.single.points, greaterThan(0));
+      expect(answers.single.isAutocorrected, isFalse);
       expect(cubit.state.timeRemaining, lessThanOrEqualTo(time), reason: 'no time bonus');
 
       await tester.pump(const Duration(seconds: 3));
@@ -148,7 +149,7 @@ void main() {
       final answered = <int>[];
       final cubit = inMatch(
         matchRound(),
-        onAnswer: (c, _, __) => answered.add(c),
+        onAnswer: (a) => answered.add(a.category),
         onFinished: () => finished++,
       );
       for (var i = 0; i < GameState.categoriesPerLetter; i++) {
@@ -184,6 +185,72 @@ void main() {
       await tester.pump(const Duration(seconds: 3));
       expect(cubit.state.timeRemaining, time);
       await cubit.close();
+    });
+  });
+
+  group('GameCubit autocorrect', () {
+    /// Submit [typed] as though spelled on the board ('*' for a mystery
+    /// orb, ' ' for the space button) on the first category, ANIMALS
+    MatchSubmission? spell(String typed) {
+      MatchSubmission? answer;
+      final cubit = inMatch(matchRound(), onAnswer: (a) => answer = a);
+      cubit.emit(cubit.state.copyWith(committedWord: typed, spaceUsageCount: ' '.allMatches(typed).length));
+      cubit.submitWord();
+      if (answer == null) expect(cubit.state.lastAnswerCorrect, isFalse, reason: typed);
+      return answer;
+    }
+
+    test('a word in the list counts in full', () {
+      final answer = spell('CHEETAH')!;
+      expect(answer.word, 'CHEETAH');
+      expect(answer.spelled, 'CHEETAH');
+      expect(answer.isAutocorrected, isFalse);
+    });
+
+    test('a slip in a long word is corrected for a share of the points', () {
+      final full = spell('CHEETAH')!.points;
+      final answer = spell('CHEETAHH')!;
+      expect(answer.word, 'CHEETAH');
+      expect(answer.spelled, 'CHEETAHH');
+      expect(answer.isAutocorrected, isTrue);
+      expect(answer.points, (full * AutocorrectConfig.pointsShare).round());
+      expect(spell('CHIMPANZE')?.word, 'CHIMPANZEE');
+    });
+
+    test('short words are never corrected - one letter off is another word', () {
+      expect(spell('CAZ'), isNull);
+      expect(spell('CTA'), isNull);
+    });
+
+    test('a long word more than a slip away is wrong', () {
+      expect(spell('CHEEEEEE'), isNull);
+      expect(spell('CHATTAH'), isNull);
+    });
+
+    test('the round letter is not a slip', () {
+      expect(spell('HEETAH'), isNull);
+      expect(spell('SHEETAH'), isNull);
+    });
+
+    test('mystery orbs stand for one letter, not anything at all', () {
+      expect(spell('CHEE*AH')?.isAutocorrected, isFalse);
+      expect(spell('CHEE*AH')?.word, 'CHEETAH');
+      expect(spell('CH*ETAHH')?.isAutocorrected, isTrue);
+      expect(spell('C*ZZZZ'), isNull);
+      expect(spell('C*ZZZZZZZ'), isNull);
+      expect(spell('*ZZZ'), isNull);
+    });
+
+    test('a trailing space earns no space bonus', () {
+      expect(spell('CHEETAH ')!.points, spell('CHEETAH')!.points);
+      expect(spell('CHEETAH ')!.spelled, 'CHEETAH');
+    });
+
+    test('the corrected word is called out on the board', () {
+      final cubit = inMatch(matchRound());
+      cubit.emit(cubit.state.copyWith(committedWord: 'CHEETAHH'));
+      cubit.submitWord();
+      expect(cubit.state.lastAutocorrectedWord, 'CHEETAH');
     });
   });
 }

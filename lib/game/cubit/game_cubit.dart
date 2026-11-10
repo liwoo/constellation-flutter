@@ -18,9 +18,8 @@ class GameCubit extends Cubit<GameState> {
     _initializeLetters();
   }
 
-  /// Match play: a category was answered. [categoryIndex] is its place in
-  /// the round as dealt, whatever order the player took them in.
-  final void Function(int categoryIndex, String word, int points)? onMatchAnswer;
+  /// Match play: a category was answered
+  final void Function(MatchSubmission answer)? onMatchAnswer;
 
   /// Match play: every category in the round is answered
   final VoidCallback? onMatchFinished;
@@ -1832,41 +1831,15 @@ class GameCubit extends Cubit<GameState> {
       return;
     }
 
-    final pattern = state.currentWord; // May contain '*' wildcards
+    final pattern = state.currentWord.trim(); // May contain '*' wildcards
 
     // Alpha Quest validation
     if (state.phase == GamePhase.playingRound && state.currentLetter != null) {
-      // Check if pattern contains wildcards (mystery orbs)
-      if (pattern.contains(GameState.wildcardChar)) {
-        // Find a matching word where wildcards can be any letter
-        // Returns (word, isFuzzy) tuple
-        final matchResult = _findMatchingWordWithFuzzyFlag(pattern, state.category, state.currentLetter!);
-        if (matchResult != null) {
-          _handleCorrectAnswer(matchResult.word, isFuzzyMatch: matchResult.isFuzzy);
-        } else {
-          _handleWrongAnswer();
-        }
+      final answer = _matchAnswer(pattern, state.category, state.currentLetter!);
+      if (answer != null) {
+        _handleCorrectAnswer(answer.word, isAutocorrected: answer.isAutocorrected);
       } else {
-        // No wildcards - try exact match first, then fuzzy match for minor typos
-        final isValid = _dictionary.isValidWord(
-          pattern,
-          state.category,
-          state.currentLetter!,
-        );
-
-        if (isValid) {
-          _handleCorrectAnswer(pattern, isFuzzyMatch: false);
-        } else {
-          // Try fuzzy matching for minor spelling mistakes
-          // (one letter off, transposed letters, etc.)
-          final fuzzyMatch = _findFuzzyMatch(pattern, state.category, state.currentLetter!);
-          if (fuzzyMatch != null) {
-            // Fuzzy match - no points awarded but still passes
-            _handleCorrectAnswer(fuzzyMatch, isFuzzyMatch: true);
-          } else {
-            _handleWrongAnswer();
-          }
-        }
+        _handleWrongAnswer();
       }
     } else {
       // Non-Alpha Quest mode (original behavior)
@@ -1883,94 +1856,44 @@ class GameCubit extends Cubit<GameState> {
     }
   }
 
-  /// Find a valid word that matches the pattern with wildcards
-  /// Also supports fuzzy matching for minor typos in non-wildcard letters
-  /// Returns the matched word and whether it was a fuzzy match, or null if no match
-  ({String word, bool isFuzzy})? _findMatchingWordWithFuzzyFlag(String pattern, String category, String startLetter) {
-    final validWords = _dictionary.getWordsForCategoryAndLetter(category, startLetter);
-    final upperPattern = pattern.toUpperCase();
-    final patternNoSpaces = upperPattern.replaceAll(' ', '');
+  /// The answer [pattern] spells for [category], or null if it isn't one.
+  /// Wildcards ('*', from mystery orbs) stand for any letter. A pattern that
+  /// misses every word is autocorrected to a long word it's a slip or two
+  /// away from (see [AutocorrectConfig]) - never a short one, where one
+  /// letter off is usually a different word.
+  ({String word, bool isAutocorrected})? _matchAnswer(String pattern, String category, String letter) {
+    final typed = pattern.toUpperCase().replaceAll(' ', '');
+    if (typed.isEmpty) return null;
+    if (_dictionary.isValidWord(typed, category, letter)) {
+      return (word: pattern, isAutocorrected: false);
+    }
 
-    // First try exact pattern match (wildcards match any letter)
-    for (final word in validWords) {
-      final upperWord = word.toUpperCase().replaceAll(' ', '');
+    final words = _dictionary.getWordsForCategoryAndLetter(category, letter);
+    String plain(String word) => word.toUpperCase().replaceAll(' ', '');
 
-      if (_matchesPattern(upperWord, patternNoSpaces)) {
-        return (word: word, isFuzzy: false); // Exact match
+    if (typed.contains(GameState.wildcardChar)) {
+      for (final word in words) {
+        if (_matchesPattern(plain(word), typed)) return (word: word, isAutocorrected: false);
       }
     }
 
-    // No exact pattern match - try fuzzy matching
-    // Replace wildcards with the actual letters from potential matches and check edit distance
-    String? bestMatch;
-    int bestDistance = 999;
+    // The letter rule isn't a slip
+    if (typed[0] != letter.toUpperCase() && typed[0] != GameState.wildcardChar) return null;
 
-    for (final word in validWords) {
-      final upperWord = word.toUpperCase().replaceAll(' ', '');
-
-      // Quick reject: length must be close
-      final lenDiff = (patternNoSpaces.length - upperWord.length).abs();
-      if (lenDiff > 2) continue;
-
-      // Create a version of the pattern with wildcards filled in from the word
-      // Then check edit distance of non-wildcard characters
-      if (_matchesPatternFuzzy(upperWord, patternNoSpaces)) {
-        // Calculate how different the non-wildcard parts are
-        final distance = _patternEditDistance(upperWord, patternNoSpaces);
-        if (distance < bestDistance) {
-          bestDistance = distance;
-          bestMatch = word;
-        }
+    String? closest;
+    var closestDistance = 1 << 30;
+    for (final word in words) {
+      final target = plain(word);
+      if (target.length < AutocorrectConfig.minLength) continue;
+      final maxEdits = AutocorrectConfig.maxEdits(target);
+      if ((target.length - typed.length).abs() > maxEdits) continue;
+      final distance = _editDistance(typed, target);
+      if (distance <= maxEdits && distance < closestDistance) {
+        closest = word;
+        closestDistance = distance;
       }
     }
-
-    if (bestMatch != null) {
-      return (word: bestMatch, isFuzzy: true); // Fuzzy match
-    }
-    return null;
-  }
-
-  /// Check if word could match pattern with fuzzy tolerance for non-wildcard chars
-  /// Pattern may contain '*' wildcards
-  bool _matchesPatternFuzzy(String word, String pattern) {
-    // Same length or within 1-2 characters (for fuzzy)
-    final lenDiff = (word.length - pattern.length).abs();
-    if (lenDiff > 2) return false;
-
-    // For same-length words, count mismatches (excluding wildcards)
-    if (word.length == pattern.length) {
-      int mismatches = 0;
-      for (int i = 0; i < pattern.length; i++) {
-        if (pattern[i] == GameState.wildcardChar) continue;
-        if (pattern[i] != word[i]) mismatches++;
-      }
-      // Allow up to 1-2 mismatches based on word length
-      final maxMismatches = word.length >= 8 ? 2 : 1;
-      return mismatches <= maxMismatches;
-    }
-
-    // For different lengths, use a more lenient check
-    // The pattern edit distance function will handle this
-    return true;
-  }
-
-  /// Calculate edit distance considering wildcards in pattern
-  /// Wildcards are "free" - they don't count as edits
-  int _patternEditDistance(String word, String pattern) {
-    // For same-length words with wildcards, count non-matching non-wildcard positions
-    if (word.length == pattern.length) {
-      int distance = 0;
-      for (int i = 0; i < pattern.length; i++) {
-        if (pattern[i] == GameState.wildcardChar) continue;
-        if (pattern[i] != word[i]) distance++;
-      }
-      return distance;
-    }
-
-    // For different lengths, use regular Levenshtein but treat wildcards as matching
-    // This is a simplified approach - replace wildcards with the corresponding letter
-    // from the word if lengths match up
-    return _levenshteinDistance(word, pattern.replaceAll(GameState.wildcardChar, '?'));
+    return closest == null ? null : (word: closest, isAutocorrected: true);
   }
 
   /// Check if a word matches a pattern with '*' wildcards
@@ -1990,24 +1913,26 @@ class GameCubit extends Cubit<GameState> {
     return true;
   }
 
-  /// Calculate Levenshtein (edit) distance between two strings
-  /// Counts minimum number of single-character edits (insertions, deletions, substitutions)
-  int _levenshteinDistance(String s1, String s2) {
-    if (s1 == s2) return 0;
-    if (s1.isEmpty) return s2.length;
-    if (s2.isEmpty) return s1.length;
+  /// Levenshtein (edit) distance from [typed] to [word]: the fewest single
+  /// letters inserted, deleted or swapped to turn one into the other. A
+  /// wildcard in [typed] matches any letter for free.
+  int _editDistance(String typed, String word) {
+    if (typed == word) return 0;
+    if (typed.isEmpty) return word.length;
+    if (word.isEmpty) return typed.length;
 
     // Use two-row optimization for space efficiency
-    List<int> previousRow = List.generate(s2.length + 1, (i) => i);
-    List<int> currentRow = List.filled(s2.length + 1, 0);
+    var previousRow = List.generate(word.length + 1, (i) => i);
+    var currentRow = List.filled(word.length + 1, 0);
 
-    for (int i = 0; i < s1.length; i++) {
+    for (int i = 0; i < typed.length; i++) {
       currentRow[0] = i + 1;
 
-      for (int j = 0; j < s2.length; j++) {
+      for (int j = 0; j < word.length; j++) {
+        final same = typed[i] == GameState.wildcardChar || typed[i] == word[j];
         final insertCost = currentRow[j] + 1;
         final deleteCost = previousRow[j + 1] + 1;
-        final substituteCost = previousRow[j] + (s1[i] == s2[j] ? 0 : 1);
+        final substituteCost = previousRow[j] + (same ? 0 : 1);
 
         currentRow[j + 1] = min(min(insertCost, deleteCost), substituteCost);
       }
@@ -2018,68 +1943,7 @@ class GameCubit extends Cubit<GameState> {
       currentRow = temp;
     }
 
-    return previousRow[s2.length];
-  }
-
-  /// Check if two strings are within acceptable edit distance for fuzzy matching
-  /// Shorter words (≤5 chars): allow 1 edit
-  /// Longer words (>5 chars): allow 1-2 edits depending on length
-  bool _isWithinFuzzyDistance(String input, String target) {
-    final inputLen = input.length;
-    final targetLen = target.length;
-
-    // Quick reject: if length difference is too large, no point calculating
-    final lenDiff = (inputLen - targetLen).abs();
-    if (lenDiff > 2) return false;
-
-    // For very short words (3-4 chars), only allow 1 edit
-    // For medium words (5-7 chars), allow 1 edit
-    // For longer words (8+ chars), allow up to 2 edits
-    final maxDistance = targetLen >= 8 ? 2 : 1;
-
-    // Also require length difference to be small
-    if (lenDiff > maxDistance) return false;
-
-    final distance = _levenshteinDistance(input, target);
-    return distance <= maxDistance;
-  }
-
-  /// Find a fuzzy match for the input word in the valid words list
-  /// Returns the matched valid word if found within acceptable edit distance, null otherwise
-  String? _findFuzzyMatch(String input, String category, String startLetter) {
-    final validWords = _dictionary.getWordsForCategoryAndLetter(category, startLetter);
-    final upperInput = input.toUpperCase().replaceAll(' ', '');
-
-    // First try exact match
-    for (final word in validWords) {
-      final upperWord = word.toUpperCase().replaceAll(' ', '');
-      if (upperWord == upperInput) {
-        return word; // Exact match
-      }
-    }
-
-    // No exact match - try fuzzy matching
-    // Find the best match (lowest edit distance) that's still acceptable
-    String? bestMatch;
-    int bestDistance = 999;
-
-    for (final word in validWords) {
-      final upperWord = word.toUpperCase().replaceAll(' ', '');
-
-      // Quick check: length must be close enough
-      final lenDiff = (upperInput.length - upperWord.length).abs();
-      if (lenDiff > 2) continue;
-
-      if (_isWithinFuzzyDistance(upperInput, upperWord)) {
-        final distance = _levenshteinDistance(upperInput, upperWord);
-        if (distance < bestDistance) {
-          bestDistance = distance;
-          bestMatch = word;
-        }
-      }
-    }
-
-    return bestMatch;
+    return previousRow[word.length];
   }
 
   /// Calculate score for a word (Scrabble-style + bonuses)
@@ -2105,7 +1969,7 @@ class GameCubit extends Cubit<GameState> {
     }
 
     // Bonus for using space button (multi-word answers like "JURASSIC PARK")
-    score += state.spaceUsageCount * ScoringConfig.spacePointsBonus;
+    score += _spacesInWord * ScoringConfig.spacePointsBonus;
 
     // Bonus for using x2 button (double letters like SS in JURASSIC)
     score += state.repeatUsageCount * ScoringConfig.repeatPointsBonus;
@@ -2113,9 +1977,13 @@ class GameCubit extends Cubit<GameState> {
     return score;
   }
 
+  /// Spaces between the words spelled (a trailing one separates nothing)
+  int get _spacesInWord => ' '.allMatches(state.currentWord.trim()).length;
+
   /// Handle correct answer in Alpha Quest
-  /// [isFuzzyMatch] - if true, no points are awarded (spelling mistake tolerance)
-  void _handleCorrectAnswer(String word, {bool isFuzzyMatch = false}) {
+  /// [isAutocorrected] - the player's spelling was a slip away from [word],
+  /// which scores [AutocorrectConfig.pointsShare] of its points
+  void _handleCorrectAnswer(String word, {bool isAutocorrected = false}) {
     // Bubbles fizz up, then a whimsical chime lands on top
     AudioService.instance.duckMusic(const Duration(milliseconds: 2200));
     AudioService.instance.play(GameSound.bubblesRise);
@@ -2125,26 +1993,29 @@ class GameCubit extends Cubit<GameState> {
     }
     HapticService.instance.success();
 
-    // No points for fuzzy matches (spelling mistakes)
-    int wordScore = 0;
+    final spelled = state.currentWord.trim();
+    var wordScore = _calculateWordScore(word);
     var shootingStarBonus = 0;
-    if (!isFuzzyMatch) {
-      wordScore = _calculateWordScore(word);
 
-      // Shooting star caught in this word
-      if (_shootingStarInWord) {
-        shootingStarBonus = max(
-          wordScore * (ShootingStarConfig.scoreMultiplier - 1),
-          ShootingStarConfig.minBonusPoints,
-        );
-        wordScore += shootingStarBonus;
-        AudioService.instance.playDelayed(GameSound.shootingStarCatch, const Duration(milliseconds: 300));
-      }
+    // Shooting star caught in this word
+    if (_shootingStarInWord) {
+      shootingStarBonus = max(
+        wordScore * (ShootingStarConfig.scoreMultiplier - 1),
+        ShootingStarConfig.minBonusPoints,
+      );
+      wordScore += shootingStarBonus;
+      AudioService.instance.playDelayed(GameSound.shootingStarCatch, const Duration(milliseconds: 300));
+    }
 
-      // Apply score multiplier if active (from mystery orb)
-      if (state.scoreMultiplierActive) {
-        wordScore = (wordScore * ScoringConfig.mysteryScoreMultiplier).round();
-      }
+    // Apply score multiplier if active (from mystery orb)
+    if (state.scoreMultiplierActive) {
+      wordScore = (wordScore * ScoringConfig.mysteryScoreMultiplier).round();
+    }
+
+    // A corrected slip scores its share of everything
+    if (isAutocorrected) {
+      wordScore = (wordScore * AutocorrectConfig.pointsShare).round();
+      shootingStarBonus = (shootingStarBonus * AutocorrectConfig.pointsShare).round();
     }
 
     final newScore = state.score + wordScore;
@@ -2176,7 +2047,7 @@ class GameCubit extends Cubit<GameState> {
     // Note: Star earning is now checked at end of letter round for dramatic reveal
 
     // Time bonus for space usage
-    var timeBonus = state.spaceUsageCount * TimeConfig.spaceTimeBonus;
+    var timeBonus = _spacesInWord * TimeConfig.spaceTimeBonus;
 
     // Pure connection bonus for completing word in single drag
     final wasPureConnection = state.isPureConnection;
@@ -2219,6 +2090,8 @@ class GameCubit extends Cubit<GameState> {
       clearLastTimeBonus: timeBonus == 0,
       lastShootingStarBonus: shootingStarBonus > 0 ? shootingStarBonus : null,
       clearLastShootingStarBonus: shootingStarBonus == 0,
+      lastAutocorrectedWord: isAutocorrected ? word : null,
+      clearLastAutocorrectedWord: !isAutocorrected,
       scoreMultiplierActive: false,
       showConnectionAnimation: wasPureConnection,
       isPureConnection: false,
@@ -2226,7 +2099,14 @@ class GameCubit extends Cubit<GameState> {
     ));
 
     if (state.matchRound case final match?) {
-      onMatchAnswer?.call(match.categories.indexOf(state.category), word, wordScore);
+      onMatchAnswer?.call(MatchSubmission(
+        category: match.categories.indexOf(state.category),
+        word: word,
+        spelled: spelled,
+        points: wordScore,
+        isAutocorrected: isAutocorrected,
+        caughtStar: shootingStarBonus > 0,
+      ));
       if (nextCategoryIndex >= GameState.categoriesPerLetter) {
         // Last one in - the round ends for everyone
         _timer?.cancel();

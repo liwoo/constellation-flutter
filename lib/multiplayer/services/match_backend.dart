@@ -1,3 +1,4 @@
+import 'package:constellation_app/game/cubit/cubit.dart';
 import 'package:constellation_app/multiplayer/models/match_models.dart';
 
 /// Why joining a room didn't work
@@ -42,10 +43,8 @@ abstract class MatchBackend {
   Future<void> submitAnswer(
     String code, {
     required int round,
-    required int category,
     required String uid,
-    required String word,
-    required int points,
+    required MatchSubmission answer,
   });
 
   /// End [round] - [by] finished it, or null when the clock ran out.
