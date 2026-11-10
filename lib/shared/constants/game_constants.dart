@@ -1,6 +1,8 @@
 // Game configuration constants for Alpha Quest mode
 // All magic numbers extracted for easy tuning and balancing
 
+import 'dart:math';
+
 /// Starting game configuration
 class GameConfig {
   const GameConfig._();
@@ -248,14 +250,30 @@ class MysteryOrbConfig {
   static const int earlyRoundRewardBonus = 10; // Rounds 1-5
   static const int midRoundRewardBonus = 5; // Rounds 6-10
 
-  /// Get mystery orb count based on round number
+  /// Mystery orbs are a rare surprise, not a fixture: they take a real
+  /// letter off the board, so most boards should have none. From round 6 a
+  /// board has these odds (percent) of carrying any at all.
+  static const int chancePercent = 25;
+
+  /// Far rarer in a match, where the clock is shared and a missing letter
+  /// costs a race rather than a few seconds, and never more than one
+  static const int matchChancePercent = 8;
+  static const int matchMaxOrbs = 1;
+
+  /// Most orbs a board can carry at [round] (when it gets any)
   static int getOrbCount(int round) {
     if (round <= 5) return 0;
-    if (round <= 10) return 1;
-    if (round <= 15) return 2;
-    if (round <= 20) return 3;
-    if (round <= 23) return 4;
-    return 5; // Rounds 24-25
+    if (round <= 15) return 1;
+    return 2;
+  }
+
+  /// Orbs dealt onto one board - usually none. Pass the board's layout
+  /// random so match players, who share it, all get the same orbs.
+  static int orbsForBoard(int round, Random random, {bool isMatch = false}) {
+    final most = isMatch ? min(getOrbCount(round), matchMaxOrbs) : getOrbCount(round);
+    if (most == 0) return 0;
+    final chance = isMatch ? matchChancePercent : chancePercent;
+    return random.nextInt(100) < chance ? most : 0;
   }
 }
 

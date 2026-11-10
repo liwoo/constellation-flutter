@@ -93,8 +93,11 @@ void main() {
     });
 
     test('hint paths run through mystery orbs standing in for letters', () {
-      // Round 6+ has an orb; with letter C it replaces a vowel
-      final cubit = playingRound(letterRound: 8, category: 'FOOD & DRINK');
+      // Round 6+ can deal an orb (rarely); with letter C it replaces a vowel
+      var cubit = playingRound(letterRound: 8, category: 'FOOD & DRINK');
+      for (var tries = 0; cubit.state.mysteryOrbs.isEmpty && tries < 200; tries++) {
+        cubit = playingRound(letterRound: 8, category: 'FOOD & DRINK');
+      }
       final orb = cubit.state.mysteryOrbs.single;
       final ids = {...cubit.state.letters.map((l) => l.id), orb.id};
 

@@ -318,7 +318,7 @@ class GameState extends Equatable {
   final bool showConnectionAnimation; // Trigger celebration animation for path
 
   // Mystery orb system
-  final List<MysteryOrb> mysteryOrbs; // 3 mystery orbs in constellation
+  final List<MysteryOrb> mysteryOrbs; // Usually none - see MysteryOrbConfig
   final int consecutivePenalties; // Pity timer: guaranteed reward after 2 penalties
   final bool scoreMultiplierActive; // 1.5x score multiplier for next word
   final MysteryOutcome? lastMysteryOutcome; // For animation feedback
