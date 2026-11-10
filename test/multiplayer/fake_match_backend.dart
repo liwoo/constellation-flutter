@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:constellation_app/game/cubit/cubit.dart';
 import 'package:constellation_app/multiplayer/models/match_models.dart';
 import 'package:constellation_app/multiplayer/services/match_backend.dart';
 import 'package:constellation_app/shared/constants/constants.dart';
@@ -129,15 +130,13 @@ class FakeMatchBackend implements MatchBackend {
   Future<void> submitAnswer(
     String code, {
     required int round,
-    required int category,
     required String uid,
-    required String word,
-    required int points,
+    required MatchSubmission answer,
   }) async {
     final answers = server.rooms[code]!.putIfAbsent('answers', () => <String, Object?>{})! as Map<String, Object?>;
     final byPlayer = answers.putIfAbsent('r$round', () => <String, Object?>{})! as Map<String, Object?>;
     final mine = byPlayer.putIfAbsent(uid, () => <String, Object?>{})! as Map<String, Object?>;
-    mine['c$category'] = <String, Object?>{'word': word, 'points': points, 'at': server.now};
+    mine['c${answer.category}'] = <String, Object?>{...MatchAnswer.fields(answer), 'at': server.now};
     server.changed(code);
   }
 

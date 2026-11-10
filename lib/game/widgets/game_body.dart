@@ -391,6 +391,14 @@ class _GameBodyState extends State<GameBody>
                   ),
                 ),
 
+                // A slip autocorrected - say what it counted as
+                Positioned(
+                  top: MediaQuery.of(context).size.height * 0.54,
+                  left: 0,
+                  right: 0,
+                  child: Center(child: AutocorrectCallout(word: state.lastAutocorrectedWord)),
+                ),
+
                 // Mystery outcome feedback overlay
                 if (_displayedMysteryOutcome != null)
                   Positioned(

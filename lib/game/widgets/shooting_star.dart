@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:constellation_app/shared/constants/constants.dart';
 import 'package:constellation_app/shared/theme/theme.dart';
 
 /// Comet for a shooting star: while [streak] runs 0-1 the head flies from
@@ -295,6 +296,23 @@ class _ShootingStarCalloutState extends State<ShootingStarCallout>
           ),
         ),
       ),
+    );
+  }
+}
+
+/// "Autocorrected" as a slipped spelling is counted as [word]
+class AutocorrectCallout extends StatelessWidget {
+  const AutocorrectCallout({super.key, required this.word});
+
+  final String? word;
+
+  @override
+  Widget build(BuildContext context) {
+    return ShootingStarCallout(
+      trigger: word,
+      title: 'AUTOCORRECTED',
+      subtitle: 'Counted as ${word ?? ''} for ${(AutocorrectConfig.pointsShare * 100).round()}% points',
+      duration: const Duration(milliseconds: 2200),
     );
   }
 }

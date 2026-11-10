@@ -134,6 +134,39 @@ class MatchRound extends Equatable {
   List<Object?> get props => [number, totalRounds, letter, categories, seed, endsAt];
 }
 
+/// A category answered in a match, as reported to the table
+class MatchSubmission extends Equatable {
+  const MatchSubmission({
+    required this.category,
+    required this.word,
+    required this.spelled,
+    required this.points,
+    this.isAutocorrected = false,
+    this.caughtStar = false,
+  });
+
+  /// The category's place in the round as dealt, whatever order the player
+  /// took them in
+  final int category;
+
+  /// The answer as it counts
+  final String word;
+
+  /// What the player actually spelled ('*' for a mystery orb)
+  final String spelled;
+
+  final int points;
+
+  /// [spelled] was a slip away from [word], so it scored a share
+  final bool isAutocorrected;
+
+  /// A shooting star was caught in the word
+  final bool caughtStar;
+
+  @override
+  List<Object?> get props => [category, word, spelled, points, isAutocorrected, caughtStar];
+}
+
 /// Game phase for Alpha Quest mode
 enum GamePhase {
   /// Initial state - show start screen
@@ -223,6 +256,7 @@ class GameState extends Equatable {
     // Shooting star bonus letter
     this.shootingStar,
     this.lastShootingStarBonus, // Points from the last caught shooting star (for animation)
+    this.lastAutocorrectedWord, // What the last answer was corrected to (for the callout)
     // Lives - spent to replay a letter round when the clock runs out
     this.lives = LivesConfig.startingLives,
     // Multiplayer round being played (null in single player)
@@ -314,6 +348,7 @@ class GameState extends Equatable {
   // Shooting star bonus letter
   final ShootingStar? shootingStar; // On the board right now, if any
   final int? lastShootingStarBonus; // Points from the last caught one (for animation)
+  final String? lastAutocorrectedWord; // The last answer, if it was a corrected slip
 
   // Lives - spent to replay a letter round when the clock runs out
   final int lives;
@@ -449,6 +484,7 @@ class GameState extends Equatable {
         previewPaths,
         shootingStar,
         lastShootingStarBonus,
+        lastAutocorrectedWord,
         lives,
         matchRound,
         practiceWord,
@@ -520,6 +556,8 @@ class GameState extends Equatable {
     bool clearShootingStar = false,
     int? lastShootingStarBonus,
     bool clearLastShootingStarBonus = false,
+    String? lastAutocorrectedWord,
+    bool clearLastAutocorrectedWord = false,
     int? lives,
     MatchRound? matchRound,
     bool clearMatchRound = false,
@@ -580,6 +618,9 @@ class GameState extends Equatable {
       lastShootingStarBonus: clearLastShootingStarBonus
           ? null
           : (lastShootingStarBonus ?? this.lastShootingStarBonus),
+      lastAutocorrectedWord: clearLastAutocorrectedWord
+          ? null
+          : (lastAutocorrectedWord ?? this.lastAutocorrectedWord),
       lives: lives ?? this.lives,
       matchRound: clearMatchRound ? null : (matchRound ?? this.matchRound),
       practiceWord: clearPracticeWord ? null : (practiceWord ?? this.practiceWord),

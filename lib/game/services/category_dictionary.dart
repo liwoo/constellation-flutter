@@ -32,11 +32,14 @@ class CategoryDictionary {
   }
 
   /// Check if a word is valid for the given category and starting letter
-  /// Supports partial name matching - user can type first name, last name, or full name
-  /// e.g., "FERDINAND", "RIO", or "RIO FERDINAND" all match "RIO FERDINAND"
+  /// Supports partial name matching - user can type first name, last name, or full name,
+  /// as long as it starts with the letter: for R, "RIO" or "RIO FERDINAND" match
+  /// "RIO FERDINAND" but "FERDINAND" doesn't
   bool isValidWord(String word, String category, String startingLetter) {
     final upperWord = word.toUpperCase().replaceAll(' ', '');
     final upperLetter = startingLetter.toUpperCase();
+    // Every answer starts with the round's letter - even part of a name
+    if (!upperWord.startsWith(upperLetter)) return false;
 
     // Find the category by name
     final categoryObj = _categoryService.getCategoryByName(category);
@@ -54,7 +57,6 @@ class CategoryDictionary {
       if (upperValidWordNoSpaces == upperWord) return true;
 
       // Match any individual part of a multi-word entry (for names like "RIO FERDINAND")
-      // This allows matching "FERDINAND" or "RIO" separately
       final parts = upperValidWord.split(' ');
       if (parts.length > 1) {
         // Check each individual part
@@ -98,6 +100,7 @@ class CategoryDictionary {
 
     final upperPrefix = prefix.toUpperCase().replaceAll(' ', '');
     final upperLetter = startingLetter.toUpperCase();
+    if (!upperPrefix.startsWith(upperLetter)) return false;
 
     // Get all valid words for this letter/category
     final words = getWordsForCategoryAndLetter(category, upperLetter);
@@ -112,7 +115,7 @@ class CategoryDictionary {
       if (upperWordNoSpaces.startsWith(upperPrefix)) return true;
 
       // For multi-word entries, also check if any individual part starts with prefix
-      // This allows typing "FER" to match "FERDINAND" in "RIO FERDINAND"
+      // (only parts that start with the letter, checked above)
       final parts = upperWord.split(' ');
       if (parts.length > 1) {
         if (parts.any((part) => part.startsWith(upperPrefix))) return true;

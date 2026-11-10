@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:constellation_app/game/cubit/cubit.dart';
 import 'package:constellation_app/multiplayer/models/match_models.dart';
 import 'package:constellation_app/shared/constants/constants.dart';
 
@@ -132,6 +133,34 @@ void main() {
       });
       expect(MatchScoring.totals(r), {'ana': 0, 'ben': 16, 'cy': 16});
       expect(MatchScoring.standings(r).map((e) => e.key.uid), ['ben', 'cy', 'ana']);
+    });
+
+    test('answers keep what was spelled and why they scored what they did', () {
+      const corrected = MatchSubmission(
+        category: 0,
+        word: 'CHEETAH',
+        spelled: 'CHEETAHH',
+        points: 11,
+        isAutocorrected: true,
+      );
+      const starred = MatchSubmission(category: 0, word: 'COW', spelled: 'COW', points: 16, caughtStar: true);
+      final r = room(state: end, answers: {
+        'r0': {
+          'ana': {'c0': {...MatchAnswer.fields(corrected), 'at': t0 + 100}},
+          'ben': {'c0': {...MatchAnswer.fields(starred), 'at': t0 + 200}},
+          // From a build before these were stored
+          'cy': {'c0': answer('CAT', 5, t0 + 300)},
+        },
+      });
+      expect(r.answers[0]!['ana']![0]!.spelled, 'CHEETAHH');
+      expect(r.answers[0]!['cy']![0]!.spelled, '');
+
+      final scored = MatchScoring.scoreRound(r, 0);
+      expect(scored['ana']![0]!.isAutocorrected, isTrue);
+      expect(scored['ana']![0]!.caughtStar, isFalse);
+      expect(scored['ben']![0]!.caughtStar, isTrue);
+      expect(scored['ben']![0]!.isAutocorrected, isFalse);
+      expect(scored['cy']![0]!.isAutocorrected || scored['cy']![0]!.caughtStar, isFalse);
     });
   });
 

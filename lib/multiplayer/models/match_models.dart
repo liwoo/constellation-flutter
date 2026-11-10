@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'package:constellation_app/game/cubit/cubit.dart';
 import 'package:constellation_app/shared/constants/constants.dart';
 
 // A room in the Realtime Database:
@@ -8,7 +9,7 @@ import 'package:constellation_app/shared/constants/constants.dart';
 //   players/{uid}: {name, joinedAt, online}
 //   setup: {seed, rounds: [{letter, categories: [...]}]}
 //   state: {status, round, startsAt, endsAt, ends/{r0}: {by, at}}
-//   answers/{r0}/{uid}/{c0}: {word, points, at}
+//   answers/{r0}/{uid}/{c0}: {word, spelled, points, at, autocorrected?, star?}
 //
 // Answer and round keys carry a letter prefix so the database never turns
 // them into arrays. Times are server milliseconds.
@@ -135,20 +136,48 @@ class RoundEnd extends Equatable {
 }
 
 class MatchAnswer extends Equatable {
-  const MatchAnswer({required this.word, required this.points, required this.at});
+  const MatchAnswer({
+    required this.word,
+    required this.points,
+    required this.at,
+    this.spelled = '',
+    this.isAutocorrected = false,
+    this.caughtStar = false,
+  });
 
   factory MatchAnswer.fromJson(Map<Object?, Object?> json) => MatchAnswer(
         word: (json['word'] as String?) ?? '',
         points: _int(json['points']),
         at: _int(json['at']),
+        spelled: (json['spelled'] as String?) ?? '',
+        isAutocorrected: json['autocorrected'] == true,
+        caughtStar: json['star'] == true,
       );
+
+  /// What's stored for [answer] (the server stamps 'at')
+  static Map<String, Object?> fields(MatchSubmission answer) => {
+        'word': answer.word,
+        'spelled': answer.spelled,
+        'points': answer.points,
+        if (answer.isAutocorrected) 'autocorrected': true,
+        if (answer.caughtStar) 'star': true,
+      };
 
   final String word;
   final int points;
   final int at;
 
+  /// What the player actually spelled (empty for answers from older builds)
+  final String spelled;
+
+  /// [spelled] was a slip away from [word], so it scored a share
+  final bool isAutocorrected;
+
+  /// A shooting star was caught in the word
+  final bool caughtStar;
+
   @override
-  List<Object?> get props => [word, points, at];
+  List<Object?> get props => [word, points, at, spelled, isAutocorrected, caughtStar];
 }
 
 class MatchRoom extends Equatable {
@@ -366,10 +395,18 @@ class MatchTiming {
 
 /// A player's answer for one category, once the round is scored
 class ScoredAnswer extends Equatable {
-  const ScoredAnswer({required this.word, required this.basePoints, required this.isUnique});
+  const ScoredAnswer({
+    required this.word,
+    required this.basePoints,
+    required this.isUnique,
+    this.isAutocorrected = false,
+    this.caughtStar = false,
+  });
 
   final String word;
   final int basePoints;
+  final bool isAutocorrected;
+  final bool caughtStar;
 
   /// Nobody else found this word for this category
   final bool isUnique;
@@ -377,7 +414,7 @@ class ScoredAnswer extends Equatable {
   int get points => isUnique ? basePoints * MultiplayerConfig.uniqueMultiplier : basePoints;
 
   @override
-  List<Object?> get props => [word, basePoints, isUnique];
+  List<Object?> get props => [word, basePoints, isUnique, isAutocorrected, caughtStar];
 }
 
 /// Scoring: a correct word scores its points; a word nobody else found for
@@ -421,6 +458,8 @@ class MatchScoring {
               word: e.value.word,
               basePoints: e.value.points,
               isUnique: counts[e.key]![_normalize(e.value.word)] == 1,
+              isAutocorrected: e.value.isAutocorrected,
+              caughtStar: e.value.caughtStar,
             ),
         },
     };

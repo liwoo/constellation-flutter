@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:constellation_app/game/cubit/cubit.dart';
 import 'package:constellation_app/multiplayer/models/match_models.dart';
 import 'package:constellation_app/multiplayer/services/match_backend.dart';
 import 'package:constellation_app/shared/constants/constants.dart';
@@ -155,14 +156,11 @@ class FirebaseMatchBackend implements MatchBackend {
   Future<void> submitAnswer(
     String code, {
     required int round,
-    required int category,
     required String uid,
-    required String word,
-    required int points,
+    required MatchSubmission answer,
   }) =>
-      _room(code).child('answers/r$round/$uid/c$category').set({
-        'word': word,
-        'points': points,
+      _room(code).child('answers/r$round/$uid/c${answer.category}').set({
+        ...MatchAnswer.fields(answer),
         'at': ServerValue.timestamp,
       });
 
